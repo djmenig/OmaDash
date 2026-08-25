@@ -1,0 +1,237 @@
+pragma Singleton
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import "../components/weatherIcons.js" as WeatherIcons
+
+// Shared weather engine: one fetch chain for every bar instance and the
+// expanded dashboard, across all monitors (same pattern as PomodoroEngine).
+// Location chain: the shared stock Omarchy location file
+// (~/.local/state/omarchy/settings/weather.json) when configured, else an
+// IP-geolocation fallback (ip-api.com). Forecast: Open-Meteo (no API key —
+// wttr.in proved flaky). Fetches use argv-array curl with size/time caps
+// (no shell interpolation).
+QtObject {
+  id: engine
+
+  // ---- state ---------------------------------------------------------------
+  property var location: null          // { latitude, longitude }
+  property string placeLabel: ""
+  property var current: null           // { temp, feels, label, code, wind, humidity }
+  property var daily: []               // [{ day, glyph, label, max, min }]
+  property string errorText: ""
+  readonly property bool loaded: !!current
+  // Display unit — driven by the compact mode selection (shared so the
+  // expanded card follows). Engine storage stays metric (°C).
+  property bool celsius: true
+
+  // Convert a stored °C value to the selected display unit.
+  function dispTemp(c) {
+    return celsius ? Math.round(Number(c) || 0) : Math.round((Number(c) || 0) * 9 / 5 + 32)
+  }
+
+  // Wind: km/h (metric) or mph (imperial).
+  readonly property string windUnit: celsius ? "km/h" : "mph"
+
+  function dispWind(kmh) {
+    return celsius ? Math.round(Number(kmh) || 0) : Math.round((Number(kmh) || 0) * 0.621371)
+  }
+
+  // Open-Meteo uses WMO weather codes.
+  function wmoLabel(code) {
+    code = Math.round(Number(code) || 0)
+    if (code === 0) return "Clear sky"
+    if (code === 1) return "Mostly clear"
+    if (code <= 2) return "Partly cloudy"
+    if (code === 3) return "Overcast"
+    if (code <= 48) return "Fog"
+    if (code <= 57) return "Drizzle"
+    if (code <= 67) return "Rain"
+    if (code <= 77) return "Snow"
+    if (code <= 82) return "Rain showers"
+    if (code <= 86) return "Snow showers"
+    return "Thunderstorm"
+  }
+
+  function wmoGlyph(code) {
+    code = Math.round(Number(code) || 0)
+    if (code === 0) return "󰖙"
+    if (code === 1) return "󰖨"
+    if (code <= 2) return "󰼰"
+    if (code === 3) return "󰖐"
+    if (code <= 48) return "󰖑"
+    if (code <= 57) return "󰖗"
+    if (code <= 67) return "󰖖"
+    if (code <= 77) return "󰖘"
+    if (code <= 82) return "󰖗"
+    if (code <= 86) return "󰖘"
+    return "󰼸"
+  }
+
+  // WMO code → wttr code → nerd-font glyph. Ported verbatim from the
+  // built-in weather plugin's Model.js (iconForOpenMeteoCode).
+  function glyphForOpenMeteoCode(code, night) {
+    var c = parseInt(String(code || "0"), 10)
+    if (c === 0) return WeatherIcons.iconForCode(113, night)
+    if (c === 1 || c === 2) return WeatherIcons.iconForCode(116, night)
+    if (c === 3) return WeatherIcons.iconForCode(119, night)
+    if (c === 45 || c === 48) return WeatherIcons.iconForCode(143, night)
+    if (c === 51 || c === 53 || c === 55 || c === 56 || c === 57 || c === 61) return WeatherIcons.iconForCode(266, night)
+    if (c === 63 || c === 65 || c === 66 || c === 67 || c === 80 || c === 81 || c === 82) return WeatherIcons.iconForCode(308, night)
+    if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86) return WeatherIcons.iconForCode(338, night)
+    if (c === 95 || c === 96 || c === 99) return WeatherIcons.iconForCode(389, night)
+    return WeatherIcons.iconForCode(119, night)
+  }
+
+  function dayLabel(iso) {
+    var d = new Date(iso)
+    return isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, "ddd")
+  }
+
+  // ---- location + fetch chain ----------------------------------------------
+  function start() {
+    engine.errorText = ""
+    engine.locationFile.reload()
+  }
+
+  function setLocation(lat, lon, label) {
+    engine.location = { latitude: Number(lat), longitude: Number(lon) }
+    if (label !== undefined && label !== null && String(label).length) engine.placeLabel = String(label)
+    engine.fetchForecast()
+  }
+
+  function fetchForecast() {
+    if (!location) return
+    var u = "https://api.open-meteo.com/v1/forecast"
+      + "?latitude=" + location.latitude + "&longitude=" + location.longitude
+      + "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,is_day"
+      + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+      + "&timezone=auto&forecast_days=4"
+    // NOTE: rebuild the command per fetch — a static command would drop the
+    // query (the original "unavailable" bug).
+    meteoProc.command = ["curl", "-sL", "--max-time", "8", "--max-filesize", "1048576", u]
+    meteoProc.acc = ""
+    meteoProc.running = true
+  }
+
+  // IP geolocation fallback (no configured location). Retries with
+  // backoff, alternating providers — a shell restart can race the network
+  // coming up, and the old code stayed stuck on the error forever.
+  property int geoAttempts: 0
+  property Timer geoRetryTimer: Timer {
+    interval: 10000
+    repeat: false
+    onTriggered: engine.ipFallback()
+  }
+
+  function ipFallback() {
+    engine.geoAttempts++
+    if (engine.geoAttempts > 4) {
+      engine.errorText = "Could not detect location"
+      return
+    }
+    // Odd attempts: ip-api; even attempts: ipwho.is (same parse fields).
+    if (engine.geoAttempts % 2 === 0)
+      geoProc.command = ["curl", "-sL", "--max-time", "6", "https://ipwho.is/"]
+    else
+      geoProc.command = ["curl", "-sL", "--max-time", "6", "http://ip-api.com/json/?fields=lat,lon,city"]
+    geoProc.acc = ""
+    geoProc.running = true
+    geoRetryTimer.restart()
+  }
+
+  property FileView locationFile: FileView {
+    id: locationFile
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/settings/weather.json"
+    watchChanges: false
+    printErrors: false
+    // NOTE: FileView.text is a METHOD.
+    onLoaded: {
+      try {
+        var d = JSON.parse(text())
+        var lat = parseFloat(d.latitude !== undefined ? d.latitude : d.lat)
+        var lon = parseFloat(d.longitude !== undefined ? d.longitude : d.lon)
+        if (!isNaN(lat) && !isNaN(lon)) {
+          engine.setLocation(lat, lon, d.name || d.city)
+          return
+        }
+      } catch (e) { }
+      engine.ipFallback()
+    }
+    onLoadFailed: engine.ipFallback()
+  }
+
+  property Process geoProc: Process {
+    id: geoProc
+    command: ["curl", "-sL", "--max-time", "6", "http://ip-api.com/json/?fields=lat,lon,city"]
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { geoProc.acc += line } }
+    onExited: {
+      geoRetryTimer.stop()
+      try {
+        var d = JSON.parse(geoProc.acc)
+        if (d.success === false) throw "provider failed"
+        var lat = d.lat !== undefined ? d.lat : d.latitude
+        var lon = d.lon !== undefined ? d.lon : d.longitude
+        engine.geoAttempts = 0
+        engine.setLocation(lat, lon, d.city)
+      } catch (e) {
+        engine.errorText = "Could not detect location"
+      }
+      geoProc.acc = ""
+    }
+  }
+
+  property Process meteoProc: Process {
+    id: meteoProc
+    command: ["curl", "-sL", "--max-time", "8", "--max-filesize", "1048576", "https://api.open-meteo.com/v1/forecast"]
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { meteoProc.acc += line } }
+    onExited: {
+      try {
+        var d = JSON.parse(meteoProc.acc)
+        var cu = d.current
+        if (!cu) throw "no current"
+        var isDay = cu.is_day === 1 || cu.is_day === true
+        engine.current = {
+          temp: Math.round(cu.temperature_2m),
+          feels: Math.round(cu.apparent_temperature),
+          label: engine.wmoLabel(cu.weather_code),
+          glyph: engine.glyphForOpenMeteoCode(cu.weather_code, !isDay),
+          code: cu.weather_code,
+          wind: Math.round(cu.wind_speed_10m),
+          humidity: Math.round(cu.relative_humidity_2m),
+          isDay: isDay
+        }
+        var days = []
+        var dl = d.daily || {}
+        // Strip = the 3 days AHEAD of today (tomorrow-first), per spec.
+        for (var i = 1; i < (dl.time ? Math.min(dl.time.length, 4) : 0); i++) {
+          days.push({
+            day: engine.dayLabel(dl.time[i]),
+            glyph: engine.glyphForOpenMeteoCode(dl.weather_code[i], false),
+            precip: dl.precipitation_probability_max !== undefined ? dl.precipitation_probability_max[i] : null,
+            label: engine.wmoLabel(dl.weather_code[i]),
+            max: Math.round(dl.temperature_2m_max[i]),
+            min: Math.round(dl.temperature_2m_min[i])
+          })
+        }
+        engine.daily = days
+        engine.errorText = ""
+      } catch (e) {
+        // Refresh failure keeps the last reading visible (built-in behavior).
+        engine.errorText = "Weather unavailable"
+      }
+      meteoProc.acc = ""
+    }
+  }
+
+  property Timer refreshTimer: Timer {
+    interval: 5 * 60 * 1000
+    running: true
+    repeat: true
+    onTriggered: engine.location ? engine.fetchForecast() : engine.start()
+  }
+
+  Component.onCompleted: start()
+}

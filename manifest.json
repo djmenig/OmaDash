@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "omadash",
+  "name": "OmaDash",
+  "version": "0.1.0",
+  "author": "djmenig",
+  "description": "Malleable HUD/dashboard with compact and expanded modes",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "OmaDash",
+    "description": "Malleable HUD/dashboard (Pomodoro, clock, weather, dashboard)",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "center"
+  }
+}
