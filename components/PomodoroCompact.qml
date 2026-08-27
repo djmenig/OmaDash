@@ -135,6 +135,18 @@ WidgetButton {
           ctx.fillStyle = Color.accent
           ctx.fillRect(ringX - gap / 2 - bw, cy - bh / 2, bw, bh)
           ctx.fillRect(ringX + gap / 2, cy - bh / 2, bw, bh)
+        } else {
+          // Idle: play triangle in the ring, matching the ring mode's glyph.
+          var ph = Math.round(extent * 0.36)
+          var pw = Math.round(extent * 0.32)
+          var px = ringX - pw / 3
+          ctx.fillStyle = root.foreground
+          ctx.beginPath()
+          ctx.moveTo(px, cy - ph / 2)
+          ctx.lineTo(px, cy + ph / 2)
+          ctx.lineTo(px + pw, cy)
+          ctx.closePath()
+          ctx.fill()
         }
         return
       }
