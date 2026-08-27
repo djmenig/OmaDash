@@ -115,6 +115,13 @@ three pages function as independent, rearrangeable corkboards.
 
 ### Later
 
+- **Tiling system improvements** — evolve the row-aware flex packer beyond the
+  current fixed `row`-driven breaks toward a more fluid layout engine. Cards
+  should reflow intelligently as the popup resizes, with content that adapts
+  like a responsive web page: widgets scale, rewrap, and recompose to fill the
+  available space instead of relying on manual row assignments. The goal is
+  flexible card content with dynamic, website-style resizing rather than
+  static, user-placed grids.
 - **Compact-mode slot selection** — a per-card, edit-mode affordance to assign
   which plugin's compact widget occupies each pill slot, with a safeguard that
   a slot holds exactly one plugin at a time (mutual exclusion). This requires a
