@@ -122,10 +122,18 @@ three pages function as independent, rearrangeable corkboards.
   available space instead of relying on manual row assignments. The goal is
   flexible card content with dynamic, website-style resizing rather than
   static, user-placed grids.
-- **Compact-mode slot selection** — a per-card, edit-mode affordance to assign
-  which plugin's compact widget occupies each pill slot, with a safeguard that
-  a slot holds exactly one plugin at a time (mutual exclusion). This requires a
-  plugin-side "compact widget" contract before it can be fully generic.
+- **Compact-mode slot selection & bar-widget swapping** — a per-card, edit-mode
+  affordance to assign which plugin's compact widget occupies each pill slot,
+  so you can, for example, drop the Notification Panel into **Slot A** in place
+  of Pomodoro. Any added plugin that ships a *bar widget* becomes a candidate
+  for a slot, with a safeguard that a slot holds exactly one plugin at a time
+  (mutual exclusion). This requires a plugin-side "compact widget" contract
+  before it can be fully generic.
+- **Curated add-plugin picker** — filter the **Add plugin** selector down to
+  plugins that expose a live-embeddable `KeyboardPanel` (the species OmaDash can
+  actually render inside a card). Everything else, which would only ever be a
+  static launcher tile or show nothing useful when pinned, is noise and will be
+  hidden rather than cluttering the picker.
 - **More card species** — additional built-in views and richer live-panel
   embedding (e.g. scrolling/paged panel content).
 - **Theming & density controls** — card sizing presets and accent behavior.

@@ -26,13 +26,6 @@ Item {
     anchors.fill: parent
     spacing: Style.space(8)
 
-    Text {
-      text: "Pomodoro"
-      font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
-      color: Color.muted
-    }
-
     // Fokus TimerFace dial (matches the fullscreen overlay): progress ring
     // with the countdown digits and phase label inside.
     // NOTE: Layout children are sized from Layout.preferred* — explicit
