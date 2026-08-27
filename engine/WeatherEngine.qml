@@ -86,8 +86,15 @@ QtObject {
     return WeatherIcons.iconForCode(119, night)
   }
 
+  // Format a "YYYY-MM-DD" date string as a local weekday. `new Date(iso)`
+  // parses the bare date as UTC midnight, which lands on the PREVIOUS day
+  // in west-of-UTC timezones (the strip read today/+1/+2 instead of
+  // +1/+2/+3). Build the date from its components instead so the label
+  // matches the date Open-Meteo returned.
   function dayLabel(iso) {
-    var d = new Date(iso)
+    var parts = String(iso || "").split("-")
+    if (parts.length < 3) return ""
+    var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10))
     return isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, "ddd")
   }
 
@@ -234,7 +241,7 @@ QtObject {
         engine.sunrise = sr && !isNaN(sr.getTime()) ? Qt.formatDateTime(sr, "h:mm AP") : ""
         engine.sunset = ss && !isNaN(ss.getTime()) ? Qt.formatDateTime(ss, "h:mm AP") : ""
 
-        // Hourly detail (next ~24h from now) for the scrollable list.
+        // Hourly detail (next ~24h from now) for the point-graph strip.
         var hl = d.hourly || {}
         var hourly = []
         if (hl.time && hl.time.length) {
@@ -245,7 +252,8 @@ QtObject {
             if (isNaN(hd.getTime())) continue
             if (hd.getTime() < now - 30 * 60 * 1000) continue
             hourly.push({
-              label: Qt.formatDateTime(hd, "h:mm AP"),
+              h: Qt.formatDateTime(hd, "h"),
+              ap: Qt.formatDateTime(hd, "AP"),
               glyph: engine.glyphForOpenMeteoCode(hl.weather_code[h], false),
               temp: engine.dispTemp(hl.temperature_2m[h]),
               wind: engine.dispWind(hl.wind_speed_10m ? hl.wind_speed_10m[h] : 0),
