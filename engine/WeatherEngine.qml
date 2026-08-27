@@ -252,7 +252,7 @@ QtObject {
             if (isNaN(hd.getTime())) continue
             if (hd.getTime() < now - 30 * 60 * 1000) continue
             hourly.push({
-              h: Qt.formatDateTime(hd, "h"),
+              h: Qt.formatDateTime(hd, "h AP").split(" ")[0],
               ap: Qt.formatDateTime(hd, "AP"),
               glyph: engine.glyphForOpenMeteoCode(hl.weather_code[h], false),
               temp: engine.dispTemp(hl.temperature_2m[h]),
