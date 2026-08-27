@@ -65,6 +65,10 @@ Item {
     var all = reg.installedPlugins || {}
     root.manifest = all[mid] || null
     root.installed = !!root.manifest
+    root.loadFailed = false
+    root._contentReady = false
+    root._adoptTries = 0
+    root.kbPanel = null
     if (root.installed) {
       root.loadPanel()
     }
@@ -80,12 +84,23 @@ Item {
     }
   }
 
+  // Bounded retry: a panel entry that never exposes a KeyboardPanel isn't
+  // embeddable — settle on the launcher-tile fallback instead of retrying
+  // forever. (Live content can take a few frames to appear, hence the budget.)
+  property int _adoptTries: 0
+
   function configureKbPanel(panel) {
     var kb = findKbPanel(panel)
     if (!kb) {
+      if (root._adoptTries++ > 40) {
+        root._contentReady = false
+        root.loadFailed = true
+        return
+      }
       Qt.callLater(function() { root.configureKbPanel(panel) })
       return
     }
+    root._adoptTries = 0
     root.kbPanel = kb
 
     // Hide the bar widget button (BarIconButton) — it uses anchors.fill:parent
@@ -169,50 +184,16 @@ Item {
     clip: true
   }
 
-  // Fallback UI — shown if panel fails to load
-  ColumnLayout {
-    id: fallback
+  // Fallback: if the entry isn't a live-embeddable panel (no KeyboardPanel
+  // surfaced within the retry budget) or the plugin isn't installed, fall back
+  // to a launcher tile — metadata + click to summon the real plugin — rather
+  // than a dead card.
+  PluginTile {
+    id: fallbackTile
     anchors.fill: parent
-    anchors.margins: Style.space(12)
+    pluginId: "plugin:" + root.manifestId
+    bar: root.bar
     visible: !root.installed || root.loadFailed
-    spacing: Style.space(6)
-
-    Item { Layout.fillHeight: true; Layout.fillWidth: true }
-
-    Text {
-      Layout.alignment: Qt.AlignHCenter
-      text: "?"
-      color: root.fg
-      opacity: 0.4
-      font.family: Style.font.menuFamily
-      font.pixelSize: Style.font.iconLarge * 1.4
-    }
-
-    Text {
-      Layout.alignment: Qt.AlignHCenter
-      Layout.fillWidth: true
-      horizontalAlignment: Text.AlignHCenter
-      text: root.manifestId
-      color: root.fg
-      opacity: 0.5
-      font.family: Style.font.menuFamily
-      font.pixelSize: Style.font.body
-      elide: Text.ElideRight
-    }
-
-    Text {
-      Layout.alignment: Qt.AlignHCenter
-      Layout.fillWidth: true
-      horizontalAlignment: Text.AlignHCenter
-      text: root.installed ? "Panel could not be embedded" : "Not installed"
-      color: root.fg
-      opacity: 0.4
-      font.family: Style.font.menuFamily
-      font.pixelSize: Style.font.bodySmall
-      elide: Text.ElideRight
-    }
-
-    Item { Layout.fillHeight: true; Layout.fillWidth: true }
   }
 
   // The panel loads here. Visible so the content tree is fully created and
@@ -228,6 +209,7 @@ Item {
         item.bar = root.bar
         item.settings = {}
         if ("manageIpc" in item) item.manageIpc = false
+        root._adoptTries = 0
         Qt.callLater(function() { root.configureKbPanel(item) })
       }
     }

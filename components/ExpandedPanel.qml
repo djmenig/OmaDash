@@ -44,6 +44,15 @@ Flickable {
     DashboardConfig.setEditMode(editMode)
   }
 
+  // Migrate older `plugin:` dashboard entries to `panel:` when the plugin now
+  // supports live in-card embedding (one-time, after the registry is ready).
+  function reconcilePanelsOnce() {
+    var reg = root.bar && root.bar.shell && root.bar.shell.pluginRegistry
+    DashboardConfig.reconcilePanels(reg ? reg : null)
+  }
+  onBarChanged: Qt.callLater(reconcilePanelsOnce)
+  Component.onCompleted: Qt.callLater(reconcilePanelsOnce)
+
   // Add plugin dialog — top-level so it sits above header (search results).
   AddPluginDialog {
     id: addDialog

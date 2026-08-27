@@ -85,14 +85,52 @@ QtObject {
     root.editMode = mode
   }
 
+  function _stripSpecies(id) {
+    var s = String(id || "")
+    if (s.indexOf("plugin:") === 0) return s.slice("plugin:".length)
+    if (s.indexOf("panel:") === 0) return s.slice("panel:".length)
+    return s
+  }
+
+  // One-time migration: as community plugins that shipped a Panel.qml entry
+  // (e.g. the notification center) gained live in-card embedding, any that
+  // were previously pinned as `plugin:` launcher tiles should become `panel:`
+  // cards so their content renders instead of just their metadata.
+  function reconcilePanels(registry) {
+    if (!registry) return
+    var all = registry.installedPlugins || {}
+    var changed = false
+    var next = []
+    for (var i = 0; i < root.activePlugins.length; i++) {
+      var e = root.activePlugins[i]
+      var rawId = String(e.id || "")
+      if (rawId.indexOf("plugin:") === 0) {
+        var mid = rawId.slice("plugin:".length)
+        var m = all[mid]
+        if (m && Registry.isPanelManifest(m)) {
+          var migrated = { cols: e.cols, rows: e.rows, row: e.row }
+          migrated.id = "panel:" + mid
+          next.push(migrated)
+          changed = true
+          continue
+        }
+      }
+      next.push(e)
+    }
+    if (changed) {
+      root.activePlugins = next
+      _persist()
+    }
+  }
+
   function addPlugin(id) {
     var d = Registry.descriptor(id)
     if (!d) return
     // Normalize for comparison: strip "plugin:" or "panel:" prefix
-    var normId = id.indexOf("plugin:") === 0 ? id.slice("plugin:".length) : (id.indexOf("panel:") === 0 ? id.slice("panel:".length) : id)
+    var normId = _stripSpecies(id)
     for (var i = 0; i < root.activePlugins.length; i++) {
       var existing = root.activePlugins[i].id
-      var existingNorm = existing.indexOf("plugin:") === 0 ? existing.slice("plugin:".length) : (existing.indexOf("panel:") === 0 ? existing.slice("panel:".length) : existing)
+      var existingNorm = _stripSpecies(existing)
       if (existingNorm === normId) return
     }
     // Join the last row; the popup widens to fit until the screen cap.

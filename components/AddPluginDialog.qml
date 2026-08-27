@@ -81,6 +81,13 @@ Item {
     return out
   }
 
+  // A manifest is treated as an embeddable panel when it carries an explicit
+  // `panel` kind, ships in the first-party panels/ tree, or resolves its
+  // panel/bar-widget entry to a Panel.qml root. The last case is what lets
+  // community bar-widget plugins (a bell + popup, like the notification
+  // center) render live in a card instead of only as metadata launcher tiles.
+  // PanelHost falls back to a launcher tile if the loaded Panel.qml turns out
+  // not to be embeddable (no KeyboardPanel).
   function scanAll() {
     var reg = bar && bar.shell && bar.shell.pluginRegistry ? bar.shell.pluginRegistry : null
     var out = []
@@ -97,11 +104,10 @@ Item {
       if (excluded[id]) continue
       var m = all[id]
       var kinds = m.kinds || []
-      // Panel species: explicit `panel` kind, or the plugin lives in the
-      // first-party panels/ tree — those ship Panel.qml as their popup UI
-      // even when the manifest only declares bar-widget (network, weather…).
-      var srcDir = String(m.__sourceDir || "")
-      var isPanel = kinds.indexOf("panel") >= 0 || srcDir.indexOf("/plugins/panels/") >= 0
+      // Panel species: explicit `panel` kind, first-party panels/ tree, or a
+      // panel/bar-widget entry resolving to a Panel.qml (e.g. the community
+      // notification center) — all embedded live into a card via PanelHost.
+      var isPanel = Registry.isPanelManifest(m)
       out.push({
         id: (isPanel ? "panel:" : "plugin:") + id,
         label: m.name || id,
