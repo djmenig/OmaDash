@@ -26,6 +26,8 @@ Item {
   opacity: open ? 1 : 0
   Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
+  onOpenChanged: if (open) flick.contentY = 0
+
   function glyphForKinds(kinds) {
     return Registry.kindGlyph(kinds)
   }
@@ -44,6 +46,7 @@ Item {
     var out = []
     var ids = Registry.allIds()
     for (var i = 0; i < ids.length; i++) {
+      if (ids[i] === "notifications") continue
       var d = Registry.descriptor(ids[i])
       if (d) out.push({ id: d.id, label: d.label, description: d.description || "", glyph: root.viewGlyph(d.id) })
     }
@@ -231,6 +234,7 @@ Item {
       contentHeight: contentCol.implicitHeight
       clip: true
       boundsBehavior: Flickable.StopAtBounds
+      onContentYChanged: if (contentY < 0) contentY = 0
 
       ColumnLayout {
         id: contentCol
@@ -249,7 +253,7 @@ Item {
         SectionLabel {
           Layout.leftMargin: Style.space(8)
           Layout.topMargin: Style.space(6)
-          text: "DASHBOARD VIEWS"
+          text: "OmaDash Plugins"
         }
 
         Repeater {
@@ -286,6 +290,16 @@ Item {
           Layout.topMargin: Style.space(10)
           visible: root.scannedRows.length === 0 && root.panelRows.length === 0
           text: "No additional plugins found."
+          color: Color.muted
+          font.family: Style.font.menuFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Text {
+          Layout.leftMargin: Style.space(8)
+          Layout.topMargin: Style.space(10)
+          visible: root.viewRows.length === 0 && (root.scannedRows.length > 0 || root.panelRows.length > 0)
+          text: "-"
           color: Color.muted
           font.family: Style.font.menuFamily
           font.pixelSize: Style.font.bodySmall

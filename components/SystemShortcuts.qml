@@ -81,7 +81,7 @@ Item {
     // Centered in the span between the search field's right edge and the
     // panel's right edge (the host anchors this item across that gap).
     anchors.horizontalCenter: parent.horizontalCenter
-    spacing: Style.space(3)
+    spacing: Style.space(8)
 
     PanelActionButton {
       iconText: "\u{F013}"

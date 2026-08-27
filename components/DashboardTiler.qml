@@ -289,6 +289,9 @@ Item {
         next.splice(insertAt, 0, entry)
         DashboardConfig.activePlugins = next  // persists + recompute
       }
+      // Trigger tiler recompute when card implicit size changes (e.g. panel content loads)
+      onImplicitWidthChanged: root.recompute()
+      onImplicitHeightChanged: root.recompute()
     }
   }
 
@@ -317,13 +320,7 @@ Item {
   // edit-switch/FAB row (injected by ExpandedPanel).
   property real dialogBottomGap: Style.space(48)
 
-  // In-dashboard overlay (NOT a PopupCard — a window here would join the
-  // bar's popout coordination and close the dashboard on open).
-  AddPluginDialog {
-    id: addDialog
-    anchors.fill: parent
-    z: 5
-    bar: root.bar
-    bottomGap: root.dialogBottomGap
+  function toggleAddDialog() {
+    addDialog.open = !addDialog.open
   }
 }

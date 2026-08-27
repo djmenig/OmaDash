@@ -20,6 +20,11 @@ WidgetButton {
 
   property string mode: DashboardConfig.settings.pomodoroMode || "ring"
 
+  // Clock mode (V2B) uses theme grey (muted) for the countdown text,
+  // matching the workspace selector's dimmed numbers.
+  readonly property color defaultForeground: Color.foreground
+  foreground: defaultForeground
+
   readonly property bool running: PomodoroEngine.running
   readonly property bool paused: PomodoroEngine.paused
   // Fokus: the indicator's progress is the REMAINING fraction — the arc
@@ -32,7 +37,7 @@ WidgetButton {
   // NEVER empty — WidgetButton hides itself when text is empty.
   text: {
     if (root.mode === "clock") return fmt()
-    if (root.mode === "ring-clock" && (root.running || root.paused)) return fmt()
+    if (root.mode === "ring-clock") return fmt() + nbsp + nbsp
     return nbsp + nbsp + nbsp + nbsp
   }
 
@@ -86,49 +91,44 @@ WidgetButton {
 
 // Fokus proportions, per the user's tuning: diameter ~2px smaller
       // than the slot-derived extent, ring stroke ~1px thicker.
-      var extent = Math.min(width, height) * 15 / 22
+      var extent = Math.min(width, height) * 11 / 22
       var stroke = Math.max(1, Math.round(extent / 8))
       var accent = Color.accent
       var track = Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25)
       var cx = width / 2
       var cy = height / 2
       var r = extent / 2
-      var accent = Color.accent
-      var track = Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25)
-      var cx = width / 2
-      var cy = height / 2
-      var r = extent / 2
 
-      // Ring outline.
-      ctx.lineWidth = stroke
-      ctx.strokeStyle = track
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.stroke()
-
-      // Ring-clock mode: the ring with countdown centered inside.
+      // Ring-clock mode: countdown text rendered by WidgetButton (left), ring drawn on Canvas (right).
       if (root.mode === "ring-clock") {
-        // Ring outline.
+        // Calculate text width to position ring on the right side.
+        // Use the full displayed text (countdown + NBSPs) for accurate positioning.
+        var text = fmt() + nbsp + nbsp
+        var textWidth = fm.advanceWidth(text)
+        var textMargin = Math.round(extent * 0.08)
+        var ringX = textWidth + textMargin + r
+
+        // Ring outline (secondary) positioned on the right.
         ctx.lineWidth = stroke
         ctx.strokeStyle = track
         ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.arc(ringX, cy, r, 0, Math.PI * 2)
         ctx.stroke()
 
+        // Remaining fraction arc (accent, subtle).
         if (root.running) {
-          ctx.strokeStyle = accent
+          ctx.strokeStyle = Color.accent
           ctx.beginPath()
-          ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + root.remainingFraction * Math.PI * 2)
+          ctx.arc(ringX, cy, r, -Math.PI / 2, -Math.PI / 2 + root.remainingFraction * Math.PI * 2)
           ctx.stroke()
         } else if (root.paused) {
           var bw = Math.max(2, Math.round(extent * 0.08))
           var bh = Math.round(extent * 0.3)
           var gap = Math.max(2, Math.round(extent * 0.08))
-          ctx.fillStyle = root.foreground
-          ctx.fillRect(cx - gap / 2 - bw, cy - bh / 2, bw, bh)
-          ctx.fillRect(cx + gap / 2, cy - bh / 2, bw, bh)
+          ctx.fillStyle = Color.accent
+          ctx.fillRect(ringX - gap / 2 - bw, cy - bh / 2, bw, bh)
+          ctx.fillRect(ringX + gap / 2, cy - bh / 2, bw, bh)
         }
-        // Countdown text centered inside the ring (WidgetButton label handles text)
         return
       }
 
@@ -156,11 +156,18 @@ WidgetButton {
           ctx.fillRect(cx - gap / 2 - bw, cy - bh / 2, bw, bh)
           ctx.fillRect(cx + gap / 2, cy - bh / 2, bw, bh)
         } else {
-          ctx.fillStyle = Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
-          ctx.font = Math.round(extent * 0.32) + "px " + root.fontFamily
-          ctx.textAlign = "center"
-          ctx.textBaseline = "middle"
-          ctx.fillText("\u25B6", cx, cy + 1)
+          // Play triangle — sized a touch larger than the pause bars so it
+          // reads with the same visual weight as the two solid bars.
+          var ph = Math.round(extent * 0.36)
+          var pw = Math.round(extent * 0.32)
+          var px = cx - pw / 3
+          ctx.fillStyle = root.foreground
+          ctx.beginPath()
+          ctx.moveTo(px, cy - ph / 2)
+          ctx.lineTo(px, cy + ph / 2)
+          ctx.lineTo(px + pw, cy)
+          ctx.closePath()
+          ctx.fill()
         }
         return
       }
@@ -188,11 +195,18 @@ WidgetButton {
           ctx.fillRect(cx - gap / 2 - bw, cy - bh / 2, bw, bh)
           ctx.fillRect(cx + gap / 2, cy - bh / 2, bw, bh)
         } else {
-          ctx.fillStyle = Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
-          ctx.font = Math.round(extent * 0.32) + "px " + root.fontFamily
-          ctx.textAlign = "center"
-          ctx.textBaseline = "middle"
-          ctx.fillText("\u25B6", cx, cy + 1)
+          // Play triangle — sized a touch larger than the pause bars so it
+          // reads with the same visual weight as the two solid bars.
+          var ph = Math.round(extent * 0.36)
+          var pw = Math.round(extent * 0.32)
+          var px = cx - pw / 3
+          ctx.fillStyle = root.foreground
+          ctx.beginPath()
+          ctx.moveTo(px, cy - ph / 2)
+          ctx.lineTo(px, cy + ph / 2)
+          ctx.lineTo(px + pw, cy)
+          ctx.closePath()
+          ctx.fill()
         }
         return
       }

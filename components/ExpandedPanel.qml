@@ -44,6 +44,15 @@ Flickable {
     DashboardConfig.setEditMode(editMode)
   }
 
+  // Add plugin dialog — top-level so it sits above header (search results).
+  AddPluginDialog {
+    id: addDialog
+    anchors.fill: parent
+    z: 10
+    bar: root.bar
+    bottomGap: Style.space(72)
+  }
+
   ColumnLayout {
     id: layout
     x: Style.space(32)
@@ -231,7 +240,7 @@ Flickable {
       foreground: Color.foreground
       hoverColor: Color.accent
       tooltipText: "Add plugin"
-      onClicked: tiler.addDialog.open = !tiler.addDialog.open
+      onClicked: addDialog.open = !addDialog.open
     }
   }
 }

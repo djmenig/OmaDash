@@ -1,0 +1,16 @@
+# Quickshell / QML compiled caches
+*.qmlc
+*.jsc
+
+# Editor / OS junk
+*.swp
+*~
+.DS_Store
+
+# Local runtime state (normally lives outside the plugin dir; ignore if present)
+config/
+*.local.json
+
+# Build / packaging output
+build/
+dist/

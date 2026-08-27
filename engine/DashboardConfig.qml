@@ -88,10 +88,17 @@ QtObject {
   function addPlugin(id) {
     var d = Registry.descriptor(id)
     if (!d) return
-    for (var i = 0; i < root.activePlugins.length; i++) if (root.activePlugins[i].id === id) return
+    // Normalize for comparison: strip "plugin:" or "panel:" prefix
+    var normId = id.indexOf("plugin:") === 0 ? id.slice("plugin:".length) : (id.indexOf("panel:") === 0 ? id.slice("panel:".length) : id)
+    for (var i = 0; i < root.activePlugins.length; i++) {
+      var existing = root.activePlugins[i].id
+      var existingNorm = existing.indexOf("plugin:") === 0 ? existing.slice("plugin:".length) : (existing.indexOf("panel:") === 0 ? existing.slice("panel:".length) : existing)
+      if (existingNorm === normId) return
+    }
     // Join the last row; the popup widens to fit until the screen cap.
     var maxRow = 0
     for (i = 0; i < root.activePlugins.length; i++) maxRow = Math.max(maxRow, rowOf(root.activePlugins[i]))
+    // Store the original descriptor id (with prefix for system plugins)
     root.activePlugins = root.activePlugins.concat([{ id: d.id, cols: d.cols, rows: d.rows, row: maxRow }])
     _persist()
   }
