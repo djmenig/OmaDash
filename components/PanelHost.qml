@@ -161,18 +161,80 @@ Item {
         return
       }
       if (root._contentReady) return
+      root._scrollables = []
       for (var i = 0; i < toAdopt.length; i++) {
         var adopted = toAdopt[i]
         if (adopted) {
           adopted.parent = hostArea
           adopted.visible = true
+          root.collectScrollables(adopted)
         }
       }
       root._contentReady = true
       if (hostArea.children.length > 0)
         root._contentImplicitH = hostArea.children[0].implicitHeight || 380
+      root.restretch()
+      // Heights of siblings (header/footer) settle after one layout pass, and
+      // list content streams in asynchronously — re-stretch once it has.
+      Qt.callLater(root.restretch)
+      Qt.callLater(function() { Qt.callLater(root.restretch) })
     }
     Qt.callLater(tryAdopt)
+  }
+
+  // Adopted panels lay their scrollable list out for a full screen-sized
+  // popup (a ListView capped by the panel's `availableCardHeight`), which
+  // fills only the top of a small embedded card. Inside this card the 
+  // content Column already spans the whole card (anchors.fill), so we
+  // stretch each inner scroll list to consume the height the non-list
+  // siblings leave behind, making the card content fill bottom to top.
+  property var _scrollables: []
+
+  function isScrollable(c) {
+    if (!c) return false
+    var s = String(c.toString())
+    return c.flickableDirection !== undefined
+        || s.indexOf("ListView") >= 0
+        || s.indexOf("Flickable") >= 0
+  }
+
+  function collectScrollables(item) {
+    var kids = item.children || []
+    for (var i = 0; i < kids.length; i++) {
+      var c = kids[i]
+      if (!c) continue
+      if (root.isScrollable(c)) {
+        root._scrollables.push(c)
+      } else {
+        root.collectScrollables(c)
+      }
+    }
+  }
+
+  // Recompute the stretched heights for the collected scrollables against the
+  // current host size. Re-runs on host resize so embedded lists track the
+  // card live.
+  function restretch() {
+    if (root._scrollables.length === 0) return
+    for (var i = 0; i < root._scrollables.length; i++) {
+      var s = root._scrollables[i]
+      if (!s || !s.parent) continue
+      var col = s.parent
+      var kids = col.children || []
+      var chrome = 0
+      var visible = 0
+      for (var j = 0; j < kids.length; j++) {
+        var kid = kids[j]
+        if (!kid || kid.visible === false) continue
+        visible++
+        if (kid !== s && !root.isScrollable(kid)) {
+          chrome += (kid.height > 0 ? kid.height : (kid.implicitHeight || 0))
+        }
+      }
+      var spacing = (col.spacing !== undefined && !isNaN(Number(col.spacing))) ? Number(col.spacing) : 0
+      var avail = hostArea.height - chrome - spacing * Math.max(0, visible - 1)
+      s.height = Math.max(0, Math.round(avail))
+    }
   }
 
   Component.onCompleted: root.resolveManifest()
@@ -182,6 +244,8 @@ Item {
     id: hostArea
     anchors.fill: parent
     clip: true
+    // Track the card size so embedded lists can be restretched to fill it.
+    onHeightChanged: Qt.callLater(root.restretch)
   }
 
   // Fallback: if the entry isn't a live-embeddable panel (no KeyboardPanel
