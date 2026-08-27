@@ -33,6 +33,13 @@ WidgetButton {
     ? Math.max(0, Math.min(1, PomodoroEngine.remaining / PomodoroEngine.duration))
     : 0
 
+  // Vertical optical adjustment for the ring's center, in real px. The ring is
+  // drawn on the slot's geometric center, but the sibling slots (clock,
+  // weather) paint centered TEXT, whose ink sits a hair above its em box. To
+  // make the ring read level with them, nudge the ring up by a fraction of a
+  // pixel. Positive moves it down (invert if the ring ever reads high).
+  property real ringCenterDy: -Style.spaceReal(0.75)
+
   // Countdown while running/paused; the ring reserves its zone via NBSPs.
   // NEVER empty — WidgetButton hides itself when text is empty.
   text: {
@@ -96,7 +103,7 @@ WidgetButton {
       var accent = Color.accent
       var track = Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25)
       var cx = width / 2
-      var cy = height / 2
+      var cy = height / 2 + root.ringCenterDy
       var r = extent / 2
 
       // Ring-clock mode: countdown text rendered by WidgetButton (left), ring drawn on Canvas (right).
