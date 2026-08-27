@@ -97,14 +97,19 @@ Item {
 
     TextField {
       id: field
+      property string fullPlaceholder: "Search... Launch... Define... Calculate..."
       Layout.fillWidth: true
       Layout.minimumWidth: Style.space(240)
-      placeholderText: "Search... Launch... Define..."
+      placeholderText: fullPlaceholder
       foreground: root.fg
       font.family: Style.font.menuFamily
-      font.pixelSize: Style.font.heading
+      // Shrink the font when the full placeholder overflows the field width,
+      // keeping the whole hint visible instead of clipping it.
+      font.pixelSize: placeholderFontPx
       onTextChanged: queryTimer.restart()
       onAccepted: root.activate(root.cursorActive ? root.selectedIndex : 0)
+      onWidthChanged: Qt.callLater(fitPlaceholderFont)
+      Component.onCompleted: fitPlaceholderFont()
       Keys.onPressed: function (event) {
         if (event.key === Qt.Key_Escape) {
           if (field.text.length) {
@@ -129,6 +134,27 @@ Item {
           event.accepted = true
         }
       }
+    }
+
+    FontMetrics {
+      id: placeholderMetrics
+      font.family: field.font.family
+    }
+
+    property int placeholderFontPx: Style.font.heading
+    function fitPlaceholderFont() {
+      var avail = field.width - Style.space(24)   // leave room for field padding
+      if (avail <= 0) return
+      var chosen = Style.font.heading
+      var candidates = [Style.font.heading, Style.font.bodySmall]
+      for (var i = 0; i < candidates.length; i++) {
+        placeholderMetrics.font.pixelSize = candidates[i]
+        if (placeholderMetrics.advanceWidth(field.fullPlaceholder) <= avail) {
+          chosen = candidates[i]
+          break
+        }
+      }
+      if (placeholderFontPx !== chosen) placeholderFontPx = chosen
     }
   }
 
@@ -381,6 +407,9 @@ Item {
     }
   }
   function runDefine(q) {
+    // Show the fetch is in progress immediately (local, instant) so the user
+    // isn't left guessing whether a word is missing or still loading.
+    root.setProvider("define", [{ provider: "define", kind: "define", label: "Looking up \u201C" + q + "\u201D\u2026", detail: "", payload: "", glyph: "", section: "top", fixedScore: -1 }])
     defProc.acc = ""
     var url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(q.toLowerCase())
     defProc.command = ["bash", "-lc", "curl -s --max-time 5 " + Util.shellQuote(url)]
@@ -394,9 +423,16 @@ Item {
         var def = m.definitions && m.definitions[0] ? m.definitions[0].definition : ""
         if (def) {
           root.setProvider("define", [{ provider: "define", kind: "define", label: def, detail: "Definition of \"" + data[0].word + "\"", payload: def, glyph: "", section: "top", fixedScore: -1 }])
+        } else {
+          // No usable definition — drop the "Looking up…" row.
+          root.setProvider("define", [])
         }
+      } else {
+        root.setProvider("define", [])
       }
-    } catch (e) { }
+    } catch (e) {
+      root.setProvider("define", [])
+    }
   }
 
   // ---- Hyprland windows ------------------------------------------------------
