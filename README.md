@@ -104,7 +104,7 @@ You can also clone / symlink the repo to
 ## Requirements
 
 - Omarchy (Quickshell-based shell).
-- Network access for weather (Open-Meteo); everything else works offline.
+- Network access for weather and online searches.
 
 ---
 
