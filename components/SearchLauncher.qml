@@ -396,42 +396,88 @@ Item {
   }
 
   // ---- Definitions (dictionaryapi.dev) --------------------------------------
+  // Repeat lookups are served from a session cache (instant, no re-fetch);
+  // every result is guarded against the user having typed a different word in
+  // the meantime, so a stale in-flight response can't overwrite the current
+  // query. This is what makes it feel snappy despite the per-word HTTP round
+  // trip (~150ms) — the old code re-launched a bash+curl subprocess on every
+  // keystroke with no cache and no stale-guard, so it was both slow and often
+  // came back empty after the query had already moved on.
+  property var defCache: ({})
+  property var activeDefine: ""   // the word the in-flight fetch is for
   Process {
     id: defProc
     running: false
     property string acc: ""
+    property string queryWord: ""
     stdout: SplitParser { onRead: function (line) { defProc.acc += line + "\n" } }
     onExited: {
-      root.parseDefine(defProc.acc)
+      root.parseDefine(defProc.acc, defProc.queryWord)
       defProc.acc = ""
     }
   }
   function runDefine(q) {
+    var word = String(q).trim().toLowerCase()
+    if (!word) { root.setProvider("define", []); return }
+    // Cached? Serve instantly and skip the network entirely.
+    if (root.defCache[word]) {
+      root.setProvider("define", root.defCache[word])
+      return
+    }
     // Show the fetch is in progress immediately (local, instant) so the user
     // isn't left guessing whether a word is missing or still loading.
-    root.setProvider("define", [{ provider: "define", kind: "define", label: "Looking up \u201C" + q + "\u201D\u2026", detail: "", payload: "", glyph: "", section: "top", fixedScore: -1 }])
+    root.setProvider("define", [{ provider: "define", kind: "define", label: "Looking up \u201C" + word + "\u201D\u2026", detail: "", payload: "", glyph: "", section: "top", fixedScore: -1 }])
+    root.activeDefine = word
+    defProc.queryWord = word
     defProc.acc = ""
-    var url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(q.toLowerCase())
-    defProc.command = ["bash", "-lc", "curl -s --max-time 5 " + Util.shellQuote(url)]
+    var url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word)
+    defProc.command = ["curl", "-s", "--max-time", "5", url]
     defProc.running = true
   }
-  function parseDefine(raw) {
+  function parseDefine(raw, word) {
+    // Stale response — the user moved to a different word while we were out.
+    if (word !== root.activeDefine) return
+    var rows = root.buildDefineRows(raw)
+    // Remember it so a later lookup of the same word is immediate.
+    if (word) root.defCache[word] = rows
+    root.setProvider("define", rows)
+  }
+  // Collect a few senses, one per part of speech. The first definition of a
+  // single meaning (the previous behaviour) surfaced obscure senses for
+  // participial forms — e.g. "determined" came back as the verb "to set the
+  // boundary of" while the everyday adjective "Decided; resolute" was dropped.
+  // Taking the first definition of each part of speech (capped) keeps every
+  // sense present instead of letting one POS with many definitions crowd the
+  // others out.
+  function buildDefineRows(raw) {
     try {
       var data = JSON.parse(raw)
-      if (Array.isArray(data) && data[0] && data[0].meanings) {
-        var m = data[0].meanings[0]
-        var def = m.definitions && m.definitions[0] ? m.definitions[0].definition : ""
-        if (def) {
-          root.setProvider("define", [{ provider: "define", kind: "define", label: def, detail: "Definition of \"" + data[0].word + "\"", payload: def, glyph: "", section: "top", fixedScore: -1 }])
-        } else {
-          // No usable definition — drop the "Looking up…" row.
-          root.setProvider("define", [])
+      if (!Array.isArray(data) || !data[0] || !data[0].meanings) return []
+      var head = data[0].word
+      var meanings = data[0].meanings || []
+      var rows = []
+      var seenPos = {}
+      for (var mi = 0; mi < meanings.length && rows.length < 3; mi++) {
+        var m = meanings[mi]
+        var pos = m.partOfSpeech || ""
+        if (seenPos[pos]) continue          // one sense per part of speech
+        seenPos[pos] = true
+        var defs = m.definitions || []
+        for (var di = 0; di < defs.length; di++) {
+          var def = String(defs[di].definition || "").trim()
+          if (!def) continue
+          rows.push({
+            provider: "define", kind: "define",
+            label: def,
+            detail: "Definition of \u201C" + head + "\u201D" + (pos ? "  ·  " + pos : ""),
+            payload: def, glyph: "", section: "top", fixedScore: -1
+          })
+          break
         }
-      } else {
-        root.setProvider("define", [])
       }
+      return rows
     } catch (e) {
-      root.setProvider("define", [])
+      return []
     }
   }
 
