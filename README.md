@@ -112,13 +112,15 @@ rm -rf ~/.config/omarchy/omadash
 
 ## Usage
 
-- **Left-click the pill** — open / close the dashboard.
-- **Edit switch** (bottom-right) — enter edit mode: drag cards (the left / right
+- **Left-click the Clock on pill** — open / close the dashboard.
+- **Left-click the Pomodoro on pill** — start / pause the timer.
+- **Right-click** the Pomodoro pill cycles its compact display mode.
+- **Right-click** the Clock pill cycles through its display formats.
+- **Right-click** the Weather pill cycles through its display formats °C/°F.
+- **Edit switch** (Dashboard) — enter edit mode: drag cards (the left / right
   half of a card decides the drop side), remove them, or add new ones via the
   **+** button.
-- **Search** — type to search; ↑/↓ navigate, Enter activates, Esc clears.
-- **Right-click** the Pomodoro pill cycles its compact display mode;
-  **right-click** the temperature toggles °C/°F.
+- **Search** (Dashboard) — type to search; ↑/↓ navigate, Enter activates, Esc clears.
 - Layout and preferences persist across restarts
   (`~/.config/omarchy/omadash/dashboard.json` and `settings.json`).
 
