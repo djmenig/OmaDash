@@ -48,6 +48,30 @@ Item {
   property var userMenuItems: []
   property var menuItems: []
 
+  // Placeholder font sizing for the search field — kept on root so the
+  // TextField can access via root.placeholderFontPx / root.fitPlaceholderFont().
+  property int placeholderFontPx: Style.font.heading
+  function fitPlaceholderFont() {
+    var avail = field.width - Style.space(24)
+    if (avail <= 0) return
+    var chosen = Style.font.heading
+    var candidates = [Style.font.heading, Style.font.bodySmall]
+    for (var i = 0; i < candidates.length; i++) {
+      placeholderMetrics.font.pixelSize = candidates[i]
+      if (placeholderMetrics.advanceWidth(field.fullPlaceholder) <= avail) {
+        chosen = candidates[i]
+        break
+      }
+    }
+    if (root.placeholderFontPx !== chosen) root.placeholderFontPx = chosen
+  }
+
+  // Load both menu sources at startup via hardened reads
+  Component.onCompleted: {
+    loadDefaultMenu()
+    loadUserMenu()
+  }
+
   function rebuildMenuIndex() {
     var merged = LauncherModel.mergeMenuSources(root.defaultMenuItems, root.userMenuItems)
     var byId = {}
@@ -60,34 +84,65 @@ Item {
     root.menuItems = merged
   }
 
-  property FileView defaultMenuFile: FileView {
-    path: root.defaultMenuPath
-    watchChanges: false
-    printErrors: false
-    onLoaded: {
-      root.defaultMenuItems = LauncherModel.parseMenuJsonc(text)
-      root.rebuildMenuIndex()
+  // Hardened reads: the menu JSONC files are loaded through an external
+  // command that verifies the file is a regular file (not a symlink), owned
+  // by the invoking user or root, and within a byte cap BEFORE emitting
+  // content — a FileView can't establish any of that and would load the
+  // whole file into memory first regardless.
+  property Process defaultMenuFile: Process {
+    id: defaultMenuFile
+    running: false
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { defaultMenuFile.acc = Caps.appendCapped(defaultMenuFile.acc, line + "\n", Caps.MAX_MENU_JSON) } }
+    onExited: function(exitCode) {
+      defaultMenuDeadline.stop()
+      root._parseDefaultMenu(exitCode === 0 ? defaultMenuFile.acc : "")
     }
-    onLoadFailed: {
-      root.defaultMenuItems = []
-      root.rebuildMenuIndex()
-    }
-    Component.onCompleted: reload()
   }
 
-  property FileView userMenuFile: FileView {
-    path: root.userMenuPath
-    watchChanges: false
-    printErrors: false
-    onLoaded: {
-      root.userMenuItems = LauncherModel.parseMenuJsonc(text)
-      root.rebuildMenuIndex()
+  property Timer defaultMenuDeadline: Timer {
+    interval: 2000
+    repeat: false
+    onTriggered: { if (defaultMenuFile.running) defaultMenuFile.running = false }
+  }
+
+  function loadDefaultMenu() {
+    defaultMenuFile.acc = ""
+    defaultMenuFile.command = Caps.safeReadCommand(root.defaultMenuPath, Caps.MAX_MENU_JSON)
+    if (!defaultMenuFile.running) { defaultMenuFile.running = true; defaultMenuDeadline.restart() }
+  }
+
+  function _parseDefaultMenu(raw) {
+    root.defaultMenuItems = LauncherModel.parseMenuJsonc(raw)
+    root.rebuildMenuIndex()
+  }
+
+  property Process userMenuFile: Process {
+    id: userMenuFile
+    running: false
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { userMenuFile.acc = Caps.appendCapped(userMenuFile.acc, line + "\n", Caps.MAX_MENU_JSON) } }
+    onExited: function(exitCode) {
+      userMenuDeadline.stop()
+      root._parseUserMenu(exitCode === 0 ? userMenuFile.acc : "")
     }
-    onLoadFailed: {
-      root.userMenuItems = []
-      root.rebuildMenuIndex()
-    }
-    Component.onCompleted: reload()
+  }
+
+  property Timer userMenuDeadline: Timer {
+    interval: 2000
+    repeat: false
+    onTriggered: { if (userMenuFile.running) userMenuFile.running = false }
+  }
+
+function loadUserMenu() {
+    userMenuFile.acc = ""
+    userMenuFile.command = Caps.safeReadCommand(root.userMenuPath, Caps.MAX_MENU_JSON)
+    if (!userMenuFile.running) { userMenuFile.running = true; userMenuDeadline.restart() }
+  }
+
+  function _parseUserMenu(raw) {
+    root.userMenuItems = LauncherModel.parseMenuJsonc(raw)
+    root.rebuildMenuIndex()
   }
 
   // ---- UI -----------------------------------------------------------------
@@ -106,11 +161,11 @@ Item {
       font.family: Style.font.menuFamily
       // Shrink the font when the full placeholder overflows the field width,
       // keeping the whole hint visible instead of clipping it.
-      font.pixelSize: placeholderFontPx
+      font.pixelSize: root.placeholderFontPx
       onTextChanged: queryTimer.restart()
       onAccepted: root.activate(root.cursorActive ? root.selectedIndex : 0)
-      onWidthChanged: Qt.callLater(fitPlaceholderFont)
-      Component.onCompleted: fitPlaceholderFont()
+      onWidthChanged: Qt.callLater(root.fitPlaceholderFont)
+      Component.onCompleted: root.fitPlaceholderFont()
       Keys.onPressed: function (event) {
         if (event.key === Qt.Key_Escape) {
           if (field.text.length) {
@@ -140,22 +195,6 @@ Item {
     FontMetrics {
       id: placeholderMetrics
       font.family: field.font.family
-    }
-
-    property int placeholderFontPx: Style.font.heading
-    function fitPlaceholderFont() {
-      var avail = field.width - Style.space(24)   // leave room for field padding
-      if (avail <= 0) return
-      var chosen = Style.font.heading
-      var candidates = [Style.font.heading, Style.font.bodySmall]
-      for (var i = 0; i < candidates.length; i++) {
-        placeholderMetrics.font.pixelSize = candidates[i]
-        if (placeholderMetrics.advanceWidth(field.fullPlaceholder) <= avail) {
-          chosen = candidates[i]
-          break
-        }
-      }
-      if (placeholderFontPx !== chosen) placeholderFontPx = chosen
     }
   }
 

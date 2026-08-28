@@ -27,6 +27,7 @@ var MAX_DASHBOARD_JSON = 1048576   // 1 MB — active dashboard layout
 var MAX_SETTINGS_JSON = 65536      // 64 KB — compact-widget preferences
 var MAX_LOCATION_JSON = 65536      // 64 KB — shared Omarchy weather location file
 var MAX_WEATHER_STATE = 262144     // shared Omarchy weather.json (if parsed)
+var MAX_MENU_JSON = 131072         // 128 KB — Omarchy menu JSONC (default ~50 KB)
 
 // Append `line` to the string `acc` but never let `acc` exceed `max` bytes.
 function appendCapped(acc, line, max) {
@@ -41,20 +42,21 @@ function appendCapped(acc, line, max) {
 // symlink API and loads content into the process before any check can run, so
 // reads of persistent JSON that OmaDash trusts must go through an external
 // command that verifies the file is a regular file (not a symlink) owned by
-// the invoking user and within a byte cap BEFORE emitting content. `head -c`
-// also bounds what a TOCTOU race could stream, so memory stays capped even if
-// the file changes between the stat and the read.
+// the invoking user (or root — system files are immutable to the user) and
+// within a byte cap BEFORE emitting content. `head -c` also bounds what a
+// TOCTOU race could stream, so memory stays capped even if the file changes
+// between the stat and the read.
 //
 // Returns an argv vector (["bash","-c",SCRIPT,"omadash-read",path,maxBytes]).
 // The path and cap are passed as positional args, never interpolated into the
 // script, so odd characters in a user path can't inject. Exit codes:
 //   0  ok (content on stdout)
 //   3  symlink           4  not a regular file / missing
-//   5  wrong owner       6  over the byte cap
+//   5  wrong owner (not user or root)  6  over the byte cap
 var SAFE_READ_SCRIPT = "p=$1; m=$2; "
   + "[ -L \"$p\" ] && exit 3; "
   + "[ -f \"$p\" ] || exit 4; "
-  + "u=$(stat -c%u -- \"$p\" 2>/dev/null); [ \"$u\" = \"$(id -u)\" ] || exit 5; "
+  + "u=$(stat -c%u -- \"$p\" 2>/dev/null); [ \"$u\" = \"$(id -u)\" ] || [ \"$u\" = \"0\" ] || exit 5; "
   + "s=$(stat -c%s -- \"$p\" 2>/dev/null); [ -n \"$s\" ] && [ \"$s\" -le \"$m\" ] || exit 6; "
   + "head -c \"$m\" -- \"$p\""
 
