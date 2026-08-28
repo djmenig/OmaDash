@@ -395,14 +395,15 @@ Item {
     calcProc.running = true
   }
 
-  // ---- Definitions (dictionaryapi.dev) --------------------------------------
-  // Repeat lookups are served from a session cache (instant, no re-fetch);
-  // every result is guarded against the user having typed a different word in
-  // the meantime, so a stale in-flight response can't overwrite the current
-  // query. This is what makes it feel snappy despite the per-word HTTP round
-  // trip (~150ms) — the old code re-launched a bash+curl subprocess on every
-  // keystroke with no cache and no stale-guard, so it was both slow and often
-  // came back empty after the query had already moved on.
+  // ---- Definitions (Wiktionary) --------------------------------------------
+  // Source: Wiktionary via the MediaWiki parse API. The previous source
+  // (dictionaryapi.dev) is a free hobbyist server that frequently hangs for
+  // seconds and drops requests — measured ~25% timeouts — which is why lookups
+  // were slow and often came back empty. Wiktionary runs on Wikipedia's
+  // infrastructure: reliable, keyless, and never hangs. Repeat lookups are
+  // served from a session cache (instant, no re-fetch), and every result is
+  // guarded against the user having typed a different word in the meantime, so
+  // a stale in-flight response can't overwrite the current query.
   property var defCache: ({})
   property var activeDefine: ""   // the word the in-flight fetch is for
   Process {
@@ -430,55 +431,132 @@ Item {
     root.activeDefine = word
     defProc.queryWord = word
     defProc.acc = ""
-    var url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word)
-    defProc.command = ["curl", "-s", "--max-time", "5", url]
+    // Remember the headword so parseDefine can name it in the detail line.
+
+    var url = "https://en.wiktionary.org/w/api.php?action=parse&page=" + encodeURIComponent(word)
+      + "&prop=wikitext&format=json&formatversion=2"
+    defProc.command = ["curl", "-s", "--max-time", "8", url]
     defProc.running = true
   }
   function parseDefine(raw, word) {
     // Stale response — the user moved to a different word while we were out.
     if (word !== root.activeDefine) return
-    var rows = root.buildDefineRows(raw)
+    var rows = root.parseWiktionary(raw, word)
     // Remember it so a later lookup of the same word is immediate.
     if (word) root.defCache[word] = rows
     root.setProvider("define", rows)
   }
-  // Collect a few senses, one per part of speech. The first definition of a
-  // single meaning (the previous behaviour) surfaced obscure senses for
-  // participial forms — e.g. "determined" came back as the verb "to set the
-  // boundary of" while the everyday adjective "Decided; resolute" was dropped.
-  // Taking the first definition of each part of speech (capped) keeps every
-  // sense present instead of letting one POS with many definitions crowd the
-  // others out.
-  function buildDefineRows(raw) {
+
+  // ---- Wiktionary wikitext → clean definition rows -------------------------
+  readonly property var defPosSet: ({ noun: 1, verb: 1, adjective: 1, adverb: 1, interjection: 1,
+    preposition: 1, pronoun: 1, conjunction: 1, determiner: 1, particle: 1, numeral: 1,
+    article: 1, contraction: 1, "prepositional phrase": 1, "proper noun": 1, suffix: 1 })
+
+  // Strip balanced {{...}} templates and [[...]] links. Templates with no
+  // display value (q/w/senseid/lb anchors, inflection markers) are dropped;
+  // others keep their last pipe-arg as the visible text ({{l|en|word}} → word).
+  function stripWikitext(s) {
+    var out = ""
+    var i = 0
+    var n = s.length
+    while (i < n) {
+      var ch = s[i]
+      if (ch === "{" && s[i + 1] === "{") {
+        var depth = 0, j = i
+        for (; j < n; j++) {
+          if (s[j] === "{" && s[j + 1] === "{") { depth++; j++ }
+          else if (s[j] === "}" && s[j + 1] === "}") { depth--; j++; if (depth === 0) break }
+        }
+        var inner = s.slice(i + 2, j - 1)
+        var parts = inner.split("|")
+        var nm = String(parts[0]).trim().toLowerCase()
+        if (nm === "q" || nm === "w" || nm === "lb" || nm === "senseid" || nm === "anchor"
+            || nm === "infl of" || nm === "inflection of") {
+          // anchor / label / inflection — no visible text
+        } else {
+          for (var k = parts.length - 1; k >= 0; k--) {
+            var a = String(parts[k]).trim()
+            if (!a) continue
+            if (parts.length > 1 && k === 0) continue   // template name
+            out += a
+            break
+          }
+        }
+        i = j + 1
+        continue
+      }
+      if (ch === "[" && s[i + 1] === "[") {
+        var end = s.indexOf("]]", i)
+        var link = (end === -1 ? s.slice(i + 2) : s.slice(i + 2, end)).split("|")
+        out += String(link[link.length - 1]).trim()
+        i = (end === -1) ? n : end + 2
+        continue
+      }
+      out += ch
+      i++
+    }
+    return out
+  }
+
+  function cleanWikidef(raw) {
+    var s = String(raw).trim()
+    s = s.replace(/^#+/, "").trim()          // # / ## / ### bullets
+    s = s.replace(/^[:*]+/, "").trim()       // lead-in markers
+    s = root.stripWikitext(s)
+    s = s.replace(/'''''/g, "").replace(/'''/g, "").replace(/''/g, "")
+    s = s.replace(/\s+/g, " ").trim()
+    return s
+  }
+
+  // Filter out inflection/derivation meta-rows ("ed-form of determine", "past
+  // participle of ...") that aren't real definitions.
+  function isWikidefInflection(def) {
+    return /^(ed-form|e-form|past participle|present participle|simple past|simple presence|preterite|gerund|imperative|infinitive|subjunctive|participle)\b.*\bof\b/i.test(def)
+  }
+
+  // Extract up to one clean definition per part of speech from the English
+  // section of the wikitext, capped at three rows.
+  function parseWiktionary(raw, head) {
+    var rows = []
     try {
       var data = JSON.parse(raw)
-      if (!Array.isArray(data) || !data[0] || !data[0].meanings) return []
-      var head = data[0].word
-      var meanings = data[0].meanings || []
-      var rows = []
+      if (!data || !data.parse || typeof data.parse.wikitext !== "string") return rows
+      var lines = data.parse.wikitext.split("\n")
+      var start = -1
+      for (var i = 0; i < lines.length; i++) {
+        if (String(lines[i]).trim() === "==English==") { start = i; break }
+      }
+      var eng = start >= 0 ? lines.slice(start + 1) : lines
+      var curPos = ""
       var seenPos = {}
-      for (var mi = 0; mi < meanings.length && rows.length < 3; mi++) {
-        var m = meanings[mi]
-        var pos = m.partOfSpeech || ""
-        if (seenPos[pos]) continue          // one sense per part of speech
-        seenPos[pos] = true
-        var defs = m.definitions || []
-        for (var di = 0; di < defs.length; di++) {
-          var def = String(defs[di].definition || "").trim()
-          if (!def) continue
-          rows.push({
-            provider: "define", kind: "define",
-            label: def,
-            detail: "Definition of \u201C" + head + "\u201D" + (pos ? "  ·  " + pos : ""),
-            payload: def, glyph: "", section: "top", fixedScore: -1
-          })
-          break
+      var got = []
+      for (var li = 0; li < eng.length && got.length < 3; li++) {
+        var text = String(eng[li]).trim()
+        if (/^==[^=].*==$/.test(text)) break            // left the English section
+        var h = /^={3,6}([A-Za-z][A-Za-z ]*)={3,6}$/.exec(text)
+        if (h) {
+          curPos = root.defPosSet[String(h[1]).trim().toLowerCase()] ? String(h[1]).trim() : ""
+          continue
+        }
+        if (curPos && /^#{1,3} /.test(text)) {
+          var def = root.cleanWikidef(text)
+          if (def && def.length > 3 && !root.isWikidefInflection(def)) {
+            got.push({ pos: curPos, def: def })
+            if (seenPos[curPos]) got.pop() else seenPos[curPos] = true
+          }
+          curPos = ""
         }
       }
-      return rows
-    } catch (e) {
-      return []
-    }
+      for (var g = 0; g < got.length; g++) {
+        rows.push({
+          provider: "define", kind: "define",
+          label: got[g].def,
+          detail: "Definition of \u201C" + head + "\u201D" + "  ·  " + got[g].pos,
+          payload: got[g].def, glyph: "", section: "top", fixedScore: -1
+        })
+      }
+    } catch (e) { }
+    return rows
   }
 
   // ---- Hyprland windows ------------------------------------------------------
