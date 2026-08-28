@@ -2,7 +2,7 @@
 
 A malleable HUD / dashboard plugin for [Omarchy](https://omarchy.org). A compact
 bar pill — **Pomodoro · clock · weather** — expands into a full dashboard:
-quick actions, a launcher-style search, system shortcuts, and a corkboard of
+quick actions, a launcher-style search, system shortcuts, and a dashboard of
 pinnable plugin cards.
 
 ![OmaDash expanded dashboard](assets/hero.png)
@@ -14,28 +14,28 @@ pinnable plugin cards.
 ### The compact pill
 
 A single bar pill showing three slots at a glance — **Pomodoro** (left),
-**clock** (center), and **weather** (right). Click anywhere on the pill to open
-the expanded dashboard.
+**clock** (center), and **weather** (right). Click on the clock and weather on the pill to open
+the expanded dashboard. Click on the Pomodoro to start it. Right-click the clock and weather to cycle
+through formats.
 
 ### The expanded dashboard
 
 A tiled card grid that autosizes to its content and opens centered on the bar.
 
+**Default Layout:**
 - **Pomodoro** — focus countdown with three compact display modes (ring,
   ring + clock, bare clock), persisted per preference.
-- **Clock** — date + time with a unit / format preference.
+- **Calendar** — Replica of the Omarchy built-in calendar with month view and year progress.
 - **Weather** — current conditions, a 3-day forecast, a scrollable hourly list,
-  sunrise/sunset, and live °C/°F toggle.
-- **Calendar** — month view with year progress.
-- **Notifications** — notification history.
+  sunrise/sunset, and live units toggle.
 
 ### Launcher-style search
 
-Apps, files, calculator (math), dictionary definitions, unit conversion, web
-keywords (`gg:` `dd:` `wiki:` `gh:`), and Hyprland window switching — all
+Apps, files, calculator (math), dictionary definitions, unit conversion, and web
+keywords (`gg:` `dd:` `wiki:` `gh:`) — all
 scored and merged into one list.
 
-### Corkboard of plugin cards
+### Dashboard of plugin cards
 
 Pin any installed Omarchy plugin into a card:
 
