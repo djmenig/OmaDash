@@ -102,7 +102,8 @@ QtObject {
   // ---- location + fetch chain ----------------------------------------------
   function start() {
     engine.errorText = ""
-    engine.locationFile.reload()
+    locationFile.acc = ""
+    if (!locationFile.running) { locationFile.running = true; locDeadline.restart() }
   }
 
   function setLocation(lat, lon, label) {
@@ -159,27 +160,37 @@ QtObject {
     geoRetryTimer.restart()
   }
 
-  property FileView locationFile: FileView {
+  // Location read goes through a hardened external command that verifies the
+  // file is a regular file (not a symlink), owned by the invoking user, and
+  // within a byte cap BEFORE emitting content — a FileView can't establish any
+  // of that and would load the whole file into memory first regardless.
+  readonly property string locationFilePath: Quickshell.env("HOME") + "/.local/state/omarchy/settings/weather.json"
+  property Process locationFile: Process {
     id: locationFile
-    path: Quickshell.env("HOME") + "/.local/state/omarchy/settings/weather.json"
-    watchChanges: false
-    printErrors: false
-    // NOTE: FileView.text is a METHOD.
-    onLoaded: {
-      // Reject nothing-but-bounded data: only parse a small, regular file.
-      if (text().length > Caps.MAX_LOCATION_JSON) { engine.ipFallback(); return }
-      try {
-        var d = JSON.parse(text())
-        var lat = parseFloat(d.latitude !== undefined ? d.latitude : d.lat)
-        var lon = parseFloat(d.longitude !== undefined ? d.longitude : d.lon)
-        if (!isNaN(lat) && !isNaN(lon)) {
-          engine.setLocation(lat, lon, d.name || d.city)
-          return
-        }
-      } catch (e) { }
-      engine.ipFallback()
+    command: Caps.safeReadCommand(locationFilePath, Caps.MAX_LOCATION_JSON)
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { locationFile.acc = Caps.appendCapped(locationFile.acc, line + "\n", Caps.MAX_LOCATION_JSON) } }
+    onExited: function(exitCode) {
+      locDeadline.stop()
+      engine._applyLocation(exitCode === 0 ? locationFile.acc : "")
     }
-    onLoadFailed: engine.ipFallback()
+  }
+  property Timer locDeadline: Timer {
+    interval: 2000
+    repeat: false
+    onTriggered: { if (locationFile.running) locationFile.running = false }
+  }
+  function _applyLocation(raw) {
+    try {
+      var d = JSON.parse(String(raw || ""))
+      var lat = parseFloat(d.latitude !== undefined ? d.latitude : d.lat)
+      var lon = parseFloat(d.longitude !== undefined ? d.longitude : d.lon)
+      if (!isNaN(lat) && !isNaN(lon)) {
+        engine.setLocation(lat, lon, d.name || d.city)
+        return
+      }
+    } catch (e) { }
+    engine.ipFallback()
   }
 
   property Process geoProc: Process {

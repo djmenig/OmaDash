@@ -46,16 +46,20 @@ BarIndicator {
   Process {
     id: jsonProc
     command: ["omarchy-reminder", "show", "--json"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.update(text)
-    }
+    // Bounded at retention, not after: a StdioCollector{waitForEnd} buffers the
+    // ENTIRE output into QML before slicing. A line-buffered SplitParser with
+    // appendCapped keeps every retained byte under MAX_REMINDER regardless of
+    // how much the producer emits.
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { jsonProc.acc = Caps.appendCapped(jsonProc.acc, line + "\n", Caps.MAX_REMINDER) } }
     onExited: function(exitCode) {
       jsonDeadline.stop()
       if (exitCode !== 0) {
         root.reminderCount = 0
         root.tooltip = ""
+        return
       }
+      root.update(jsonProc.acc)
     }
   }
 

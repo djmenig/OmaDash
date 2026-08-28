@@ -28,8 +28,13 @@ QtObject {
   // mode auto-exits when the count returns to zero.
   property int openPanels: 0
 
-  // Ensure the config directory exists (FileView does not mkdir -p).
-  Component.onCompleted: Util.execDetached("mkdir -p " + Util.shellQuote(root.configDir))
+  // Ensure the config directory exists (FileView does not mkdir -p), then load
+  // the persisted dashboard layout and settings through the hardened reads.
+  Component.onCompleted: {
+    Util.execDetached("mkdir -p " + Util.shellQuote(root.configDir))
+    root.loadConfig()
+    root.loadSettings()
+  }
 
   function panelOpened() {
     root.openPanels++
@@ -170,23 +175,41 @@ QtObject {
   }
 
   // ---- compact-widget settings (clock format, pomodoro mode, …) ----------
-  property FileView settingsReader: FileView {
-    path: root.settingsPath
-    watchChanges: false
-    printErrors: false
-    // NOTE: FileView.text is a METHOD.
-    onLoaded: {
-      // Bounded retention: only parse a small, regular settings file.
-      if (text().length > Caps.MAX_SETTINGS_JSON) { root.settings = {}; return }
-      try {
-        var parsed = JSON.parse(text())
-        root.settings = Util.isPlainObject(parsed) ? parsed : {}
-      } catch (e) {
-        root.settings = {}
-      }
+  // Settings read goes through a hardened external command that verifies the
+  // file is a regular file (not a symlink), owned by the invoking user, and
+  // within a byte cap BEFORE emitting content — a FileView can't establish any
+  // of that and would load the whole file into memory first regardless.
+  property Process settingsReader: Process {
+    id: settingsReader
+    command: Caps.safeReadCommand(root.settingsPath, Caps.MAX_SETTINGS_JSON)
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { settingsReader.acc = Caps.appendCapped(settingsReader.acc, line + "\n", Caps.MAX_SETTINGS_JSON) } }
+    onExited: function(exitCode) {
+      settingsDeadline.stop()
+      root._loadSettings(exitCode === 0 ? settingsReader.acc : "")
     }
-    onLoadFailed: root.settings = {}
-    Component.onCompleted: reload()
+  }
+
+  property Timer settingsDeadline: Timer {
+    interval: 2000
+    repeat: false
+    onTriggered: { if (settingsReader.running) settingsReader.running = false }
+  }
+
+  function loadSettings() {
+    settingsReader.acc = ""
+    if (!settingsReader.running) { settingsReader.running = true; settingsDeadline.restart() }
+  }
+
+  function _loadSettings(raw) {
+    root.settings = {}
+    if (!String(raw || "").length) return
+    try {
+      var parsed = JSON.parse(raw)
+      root.settings = Util.isPlainObject(parsed) ? parsed : {}
+    } catch (e) {
+      root.settings = {}
+    }
   }
 
   property FileView settingsWriter: FileView {
@@ -203,18 +226,25 @@ QtObject {
     settingsWriter.setText(JSON.stringify(next, null, 2) + "\n")
   }
 
-  property FileView reader: FileView {
-    path: root.configPath
-    watchChanges: false
-    printErrors: false
-    // NOTE: FileView.text is a METHOD — `text` alone passes the function
-    // reference and JSON.parse always fails.
-    onLoaded: {
-      // Bounded retention: only parse a small, regular dashboard file.
-      if (text().length > Caps.MAX_DASHBOARD_JSON) { root._parse("[]"); return }
-      root._parse(text())
+  property Process reader: Process {
+    id: reader
+    command: Caps.safeReadCommand(root.configPath, Caps.MAX_DASHBOARD_JSON)
+    property string acc: ""
+    stdout: SplitParser { onRead: function (line) { reader.acc = Caps.appendCapped(reader.acc, line + "\n", Caps.MAX_DASHBOARD_JSON) } }
+    onExited: function(exitCode) {
+      readerDeadline.stop()
+      root._parse(exitCode === 0 ? reader.acc : "[]")
     }
-    onLoadFailed: root._parse("[]")
-    Component.onCompleted: reload()
+  }
+
+  property Timer readerDeadline: Timer {
+    interval: 2000
+    repeat: false
+    onTriggered: { if (reader.running) reader.running = false }
+  }
+
+  function loadConfig() {
+    reader.acc = ""
+    if (!reader.running) { reader.running = true; readerDeadline.restart() }
   }
 }

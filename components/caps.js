@@ -36,3 +36,28 @@ function appendCapped(acc, line, max) {
   if (room <= 0) return acc
   return acc + (line.length <= room ? line : line.slice(0, room))
 }
+
+// Hardened local-file read. Quickshell 0.3.1's FileView gives no stat/owner/
+// symlink API and loads content into the process before any check can run, so
+// reads of persistent JSON that OmaDash trusts must go through an external
+// command that verifies the file is a regular file (not a symlink) owned by
+// the invoking user and within a byte cap BEFORE emitting content. `head -c`
+// also bounds what a TOCTOU race could stream, so memory stays capped even if
+// the file changes between the stat and the read.
+//
+// Returns an argv vector (["bash","-c",SCRIPT,"omadash-read",path,maxBytes]).
+// The path and cap are passed as positional args, never interpolated into the
+// script, so odd characters in a user path can't inject. Exit codes:
+//   0  ok (content on stdout)
+//   3  symlink           4  not a regular file / missing
+//   5  wrong owner       6  over the byte cap
+var SAFE_READ_SCRIPT = "p=$1; m=$2; "
+  + "[ -L \"$p\" ] && exit 3; "
+  + "[ -f \"$p\" ] || exit 4; "
+  + "u=$(stat -c%u -- \"$p\" 2>/dev/null); [ \"$u\" = \"$(id -u)\" ] || exit 5; "
+  + "s=$(stat -c%s -- \"$p\" 2>/dev/null); [ -n \"$s\" ] && [ \"$s\" -le \"$m\" ] || exit 6; "
+  + "head -c \"$m\" -- \"$p\""
+
+function safeReadCommand(path, maxBytes) {
+  return ["bash", "-c", SAFE_READ_SCRIPT, "omadash-read", String(path || ""), String(maxBytes)]
+}
