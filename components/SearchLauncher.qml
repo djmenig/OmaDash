@@ -541,8 +541,10 @@ Item {
         if (curPos && /^#{1,3} /.test(text)) {
           var def = root.cleanWikidef(text)
           if (def && def.length > 3 && !root.isWikidefInflection(def)) {
-            got.push({ pos: curPos, def: def })
-            if (seenPos[curPos]) got.pop() else seenPos[curPos] = true
+            if (!seenPos[curPos]) {
+              seenPos[curPos] = true
+              got.push({ pos: curPos, def: def })
+            }
           }
           curPos = ""
         }
