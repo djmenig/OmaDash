@@ -125,9 +125,13 @@ QtObject {
     meteoProc.running = true
   }
 
-  // IP geolocation fallback (no configured location). Retries with
-  // backoff, alternating providers — a shell restart can race the network
-  // coming up, and the old code stayed stuck on the error forever.
+  // IP geolocation fallback (no configured location). Retries both providers
+  // with backoff until one succeeds or attempts run out — a shell restart can
+  // race the network/DNS coming up, and the previous code stopped the retry
+  // timer in onExited, so a single transient geo failure stuck on the error
+  // until the next 5-minute refresh. NOTE: ip-api's free tier is HTTP-only
+  // (returns {} on https), so the odd/even split keeps it HTTP and ipwho.is
+  // HTTPS.
   property int geoAttempts: 0
   property Timer geoRetryTimer: Timer {
     interval: 10000
@@ -136,16 +140,17 @@ QtObject {
   }
 
   function ipFallback() {
-    engine.geoAttempts++
-    if (engine.geoAttempts > 4) {
+    if (engine.geoAttempts >= 4) {
       engine.errorText = "Could not detect location"
       return
     }
-    // Odd attempts: ip-api; even attempts: ipwho.is (same parse fields).
-    if (engine.geoAttempts % 2 === 0)
-      geoProc.command = ["curl", "-sL", "--max-time", "6", "https://ipwho.is/"]
-    else
-      geoProc.command = ["curl", "-sL", "--max-time", "6", "http://ip-api.com/json/?fields=lat,lon,city"]
+    // First odd attempt: ip-api; alternate to ipwho.is (both expose the same
+    // lat/lon/city fields). Ping-pong so one dead provider can't block the other.
+    var url = (engine.geoAttempts % 2 === 1)
+      ? "https://ipwho.is/"
+      : "http://ip-api.com/json/?fields=lat,lon,city"
+    engine.geoAttempts++
+    geoProc.command = ["curl", "-sL", "--max-time", "6", url]
     geoProc.acc = ""
     geoProc.running = true
     geoRetryTimer.restart()
@@ -178,16 +183,21 @@ QtObject {
     property string acc: ""
     stdout: SplitParser { onRead: function (line) { geoProc.acc += line } }
     onExited: {
-      geoRetryTimer.stop()
       try {
         var d = JSON.parse(geoProc.acc)
         if (d.success === false) throw "provider failed"
         var lat = d.lat !== undefined ? d.lat : d.latitude
         var lon = d.lon !== undefined ? d.lon : d.longitude
+        if (isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) throw "no coords"
+        // Success: stop the retry timer and clear the transient error so a
+        // recovered provider doesn't keep showing a stale "no location".
+        geoRetryTimer.stop()
         engine.geoAttempts = 0
+        engine.errorText = ""
         engine.setLocation(lat, lon, d.city)
       } catch (e) {
-        engine.errorText = "Could not detect location"
+        // Transient failure — back off, then try the other provider.
+        geoRetryTimer.restart()
       }
       geoProc.acc = ""
     }
