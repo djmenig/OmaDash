@@ -89,6 +89,27 @@ omarchy bar move djmenig.omadash --section center
 You can also clone / symlink the repo to
 `~/.config/omarchy/plugins/djmenig.omadash` and restart the shell.
 
+## Removing
+
+Take OmaDash off the bar but keep it installed:
+
+```sh
+omarchy plugin disable djmenig.omadash
+```
+
+Uninstall and remove it entirely (also removes it from the bar):
+
+```sh
+omarchy plugin remove djmenig.omadash --yes
+```
+
+Your saved layout and preferences live outside the plugin directory in
+`~/.config/omarchy/omadash/` and are left behind. To clear them too:
+
+```sh
+rm -rf ~/.config/omarchy/omadash
+```
+
 ## Usage
 
 - **Left-click the pill** — open / close the dashboard.
@@ -103,8 +124,40 @@ You can also clone / symlink the repo to
 
 ## Requirements
 
-- Omarchy (Quickshell-based shell).
-- Network access for weather and online searches.
+- **Omarchy** (Quickshell-based shell).
+- **Network access** for weather and online searches.
+
+### External services & data
+
+- **Open-Meteo** — weather forecast and geocoding (no API key; shares Omarchy's
+  configured location).
+- **ip-api.com** and **ipwho.is** — IP geolocation fallback for weather when
+  Omarchy has no configured location.
+- **Wiktionary** (`en.wiktionary.org`) — dictionary definitions in search.
+
+These are only contacted when a relevant feature needs data (weather fetch, or
+a definition lookup); nothing else requires network access and everything else
+works offline.
+
+### Commands & privileges invoked
+
+OmaDash runs as normal user and delegates privileged or system actions to
+Omarchy's own built-in commands rather than reimplementing them:
+
+- **Omarchy system actions:** `omarchy system lock`, `omarchy system reboot`,
+  `omarchy system shutdown`, `omarchy-launch-screensaver force`,
+  `omarchy-reminder`, `omarchy launch editor`, and
+  `omarchy-shell shell toggle/summon` (plugin lifecycle / launcher).
+- **Hyprland:** `hyprctl dispatch exit` (logout) and
+  `hyprctl dispatch focuswindow` (window switching).
+- **Search handling:** `xdg-open` (open results), `wl-copy` (copy to clipboard).
+- **Calculator:** a sandboxed `python3 -c` expression evaluator for math
+  queries.
+- **Sound:** `paplay` on `/usr/share/sounds/freedesktop/stereo/bell.oga` for the
+  Pomodoro completion chime (requires the freedesktop sound theme).
+
+No action writes to or modifies your shell/Omarchy configuration — OmaDash only
+persists its own state under `~/.config/omarchy/omadash/`.
 
 ---
 
