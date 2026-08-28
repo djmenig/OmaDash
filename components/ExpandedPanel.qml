@@ -30,7 +30,7 @@ Flickable {
   // OmaDash Settings overlay state — placeholder for a future settings UI.
   property bool settingsOpen: false
 
-  readonly property string omadashDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/omadash"
+  readonly property string omadashDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/djmenig.omadash"
 
   implicitWidth: layout.implicitWidth
   implicitHeight: layout.y + layout.height + Style.space(64)

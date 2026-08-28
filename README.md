@@ -83,11 +83,11 @@ omarchy restart shell
 If the pill lands somewhere other than the center of the bar:
 
 ```sh
-omarchy bar move omadash --section center
+omarchy bar move djmenig.omadash --section center
 ```
 
-You can also clone / symlink the repo to `~/.config/omarchy/plugins/omadash` and
-restart the shell.
+You can also clone / symlink the repo to
+`~/.config/omarchy/plugins/djmenig.omadash` and restart the shell.
 
 ## Usage
 
@@ -111,7 +111,7 @@ restart the shell.
 ## Architecture
 
 ```
-omadash/
+djmenig.omadash/
 ├── BarWidget.qml            # bar entry point; owns the compact pill + panel
 ├── Panel.qml                # expanded dashboard surface (layer-shell)
 ├── components/
@@ -131,7 +131,7 @@ omadash/
 ```
 
 **Why state lives outside the plugin directory.** Layout and settings are
-written to `~/.config/omarchy/omadash/` (not inside `plugins/omadash/`). Writing
+written to `~/.config/omarchy/omadash/` (not inside `plugins/djmenig.omadash/`). Writing
 inside the plugin directory trips Omarchy's plugin watcher, which reloads the
 whole plugin and closes any open dashboard on every persist. Keeping state
 outside avoids that.

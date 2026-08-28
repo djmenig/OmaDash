@@ -10,7 +10,7 @@ import "engine"
 // bar-anchored KeyboardPanel. manageIpc: false — BarWidget owns the IPC.
 Panel {
   id: root
-  moduleName: "omadash"
+  moduleName: "djmenig.omadash"
   manageIpc: false
 
   // Injected by BarWidget.injectPanel().

@@ -7,13 +7,13 @@ import "../components/DashboardRegistry.js" as Registry
 
 // Persisted layout of the expanded dashboard's bottom tile grid.
 // Stores an ordered list of active plugin ids (with their grid spans) in
-// ~/.config/omarchy/plugins/omadash/config/dashboard.json. The tiler reads
+// ~/.config/omarchy/omadash/config/dashboard.json. The tiler reads
 // `activePlugins`; the add dialog reads `availableIds()`.
 QtObject {
   id: root
 
   // Config lives OUTSIDE the plugin directory — writing inside
-  // plugins/omadash/ trips the shell's plugin watcher ("Local plugin
+  // plugins/djmenig.omadash/ trips the shell's plugin watcher ("Local plugin
   // changed, reloading") which tears down and reloads the whole plugin,
   // closing the open dashboard on every persist.
   readonly property string configDir: Quickshell.env("HOME") + "/.config/omarchy/omadash"

@@ -9,7 +9,7 @@ import "components"
 // forwarded to the loaded panel — mirrors the omarchy.clock contract.
 BarWidget {
   id: root
-  moduleName: "omadash"
+  moduleName: "djmenig.omadash"
 
   // Size the bar slot from the compact widget (the bar sizes slots from
   // implicitWidth/Height; without this the slot is 0x0 and invisible).

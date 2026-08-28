@@ -15,7 +15,7 @@ Item {
   property var bar: null
   readonly property color fg: bar ? bar.foreground : Color.foreground
 
-  readonly property string omadashDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/omadash"
+  readonly property string omadashDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/djmenig.omadash"
 
   signal settingsRequested()
   // Emitted before any action that takes over the screen so the host can

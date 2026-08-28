@@ -93,7 +93,7 @@ Item {
     var out = []
     if (!reg) return out
     var excluded = {
-      "omadash": true,
+      "djmenig.omadash": true,
       "omarchy.background": true,
       "omarchy.polkit": true,
       "omarchy.lock": true,
