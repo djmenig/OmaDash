@@ -5,6 +5,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "../components/LauncherModel.js" as LauncherModel
+import "../components/caps.js" as Caps
 
 // SearchLauncher: the dashboard's search field (top header, center).
 // A replica of the Omarchy launcher's search: unified scored results from
@@ -350,9 +351,12 @@ Item {
     property string query: ""
     property var acc: []
     stdout: SplitParser {
-      onRead: function (line) { fileProc.acc.push(String(line).trim()) }
+      // Bounded retention: never keep more than MAX_FILE_ROWS rows, whatever
+      // the search returns.
+      onRead: function (line) { if (fileProc.acc.length < Caps.MAX_FILE_ROWS) fileProc.acc.push(String(line).trim()) }
     }
     onExited: {
+      fileDeadline.stop()
       var out = []
       var lim = Math.min(fileProc.acc.length, 6)
       for (var i = 0; i < lim; i++) {
@@ -365,11 +369,19 @@ Item {
       root.setProvider("files", out)
     }
   }
+  // Hard deadline: a deep recursive search can be slow; SIGTERM it if it
+  // hasn't finished, so a large home dir can't stall the executor.
+  property Timer fileDeadline: Timer {
+    interval: 3000
+    repeat: false
+    onTriggered: { if (fileProc.running) fileProc.running = false }
+  }
   function runFiles(q) {
     fileProc.query = q
     fileProc.acc = []
     fileProc.command = ["bash", "-lc", "fd -t f -H --exclude .git -d 6 " + Util.shellQuote(q) + " " + Util.shellQuote(Quickshell.env("HOME"))]
     fileProc.running = true
+    fileDeadline.restart()
   }
 
   // ---- Calculator (python3, sandboxed eval) --------------------------------
@@ -378,8 +390,9 @@ Item {
     running: false
     property string query: ""
     property string acc: ""
-    stdout: SplitParser { onRead: function (line) { calcProc.acc += line } }
+    stdout: SplitParser { onRead: function (line) { calcProc.acc = Caps.appendCapped(calcProc.acc, line, Caps.MAX_CALC) } }
     onExited: {
+      calcDeadline.stop()
       var v = calcProc.acc.trim()
       if (v.length) {
         root.setProvider("calc", [{ provider: "calc", kind: "calc", label: v, detail: calcProc.query, payload: v, glyph: "", section: "top", fixedScore: -1 }])
@@ -387,12 +400,18 @@ Item {
       calcProc.acc = ""
     }
   }
+  property Timer calcDeadline: Timer {
+    interval: 2000
+    repeat: false
+    onTriggered: { if (calcProc.running) calcProc.running = false }
+  }
   function runCalc(q) {
     var code = "import math,sys; safe={k:getattr(math,k) for k in dir(math) if not k.startswith('_')}; safe.update({'abs':abs,'pow':pow,'round':round,'min':min,'max':max}); print(eval(sys.argv[1],{'__builtins__':{}},safe))"
     calcProc.query = q
     calcProc.acc = ""
     calcProc.command = ["python3", "-c", code, q]
     calcProc.running = true
+    calcDeadline.restart()
   }
 
   // ---- Definitions (Wiktionary) --------------------------------------------
@@ -411,11 +430,17 @@ Item {
     running: false
     property string acc: ""
     property string queryWord: ""
-    stdout: SplitParser { onRead: function (line) { defProc.acc += line + "\n" } }
+    stdout: SplitParser { onRead: function (line) { defProc.acc = Caps.appendCapped(defProc.acc, line + "\n", Caps.MAX_DEFINITION) } }
     onExited: {
+      defDeadline.stop()
       root.parseDefine(defProc.acc, defProc.queryWord)
       defProc.acc = ""
     }
+  }
+  property Timer defDeadline: Timer {
+    interval: 10000
+    repeat: false
+    onTriggered: { if (defProc.running) defProc.running = false }
   }
   function runDefine(q) {
     var word = String(q).trim().toLowerCase()
@@ -435,8 +460,9 @@ Item {
 
     var url = "https://en.wiktionary.org/w/api.php?action=parse&page=" + encodeURIComponent(word)
       + "&prop=wikitext&format=json&formatversion=2"
-    defProc.command = ["curl", "-s", "--max-time", "8", url]
+    defProc.command = ["curl", "-s", "--max-time", "8", "--max-filesize", String(Caps.CURL_DEFINITION), url]
     defProc.running = true
+    defDeadline.restart()
   }
   function parseDefine(raw, word) {
     // Stale response — the user moved to a different word while we were out.
@@ -566,8 +592,9 @@ Item {
     id: winProc
     running: false
     property string acc: ""
-    stdout: SplitParser { onRead: function (line) { winProc.acc += line } }
+    stdout: SplitParser { onRead: function (line) { winProc.acc = Caps.appendCapped(winProc.acc, line, Caps.MAX_WINDOWS) } }
     onExited: {
+      winDeadline.stop()
       var out = []
       try {
         var clients = JSON.parse(winProc.acc)
@@ -591,9 +618,15 @@ Item {
       root.setProvider("windows", out)
     }
   }
+  property Timer winDeadline: Timer {
+    interval: 1500
+    repeat: false
+    onTriggered: { if (winProc.running) winProc.running = false }
+  }
   function runWindows(q) {
     winProc.acc = ""
     winProc.command = ["hyprctl", "clients", "-j"]
     winProc.running = true
+    winDeadline.restart()
   }
 }

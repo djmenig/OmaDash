@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "../components/DashboardRegistry.js" as Registry
+import "../components/caps.js" as Caps
 
 // Persisted layout of the expanded dashboard's bottom tile grid.
 // Stores an ordered list of active plugin ids (with their grid spans) in
@@ -155,9 +156,12 @@ QtObject {
   // Synchronous write via FileView (the shell's own config-write idiom) —
   // the previous execDetached+shell approach raced the async config reads,
   // which could consume a half-written file, fail JSON.parse, and reset
-  // the layout to defaults.
+  // the layout to defaults. atomicWrites writes a temp file and renames it
+  // over the target (atomic, replaces any symlink rather than following it,
+  // 0600 like the shell's own shell.json).
   property FileView writer: FileView {
     path: root.configPath
+    atomicWrites: true
     printErrors: false
   }
 
@@ -172,6 +176,8 @@ QtObject {
     printErrors: false
     // NOTE: FileView.text is a METHOD.
     onLoaded: {
+      // Bounded retention: only parse a small, regular settings file.
+      if (text().length > Caps.MAX_SETTINGS_JSON) { root.settings = {}; return }
       try {
         var parsed = JSON.parse(text())
         root.settings = Util.isPlainObject(parsed) ? parsed : {}
@@ -185,6 +191,7 @@ QtObject {
 
   property FileView settingsWriter: FileView {
     path: root.settingsPath
+    atomicWrites: true
     printErrors: false
   }
 
@@ -202,7 +209,11 @@ QtObject {
     printErrors: false
     // NOTE: FileView.text is a METHOD — `text` alone passes the function
     // reference and JSON.parse always fails.
-    onLoaded: root._parse(text())
+    onLoaded: {
+      // Bounded retention: only parse a small, regular dashboard file.
+      if (text().length > Caps.MAX_DASHBOARD_JSON) { root._parse("[]"); return }
+      root._parse(text())
+    }
     onLoadFailed: root._parse("[]")
     Component.onCompleted: reload()
   }

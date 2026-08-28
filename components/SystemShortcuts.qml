@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "../components/caps.js" as Caps
 
 // SystemShortcuts: power actions + an OmaDash settings shortcut, shown in the
 // expanded dashboard's top header (right column). Icon-only — no text labels;
@@ -33,13 +34,14 @@ Item {
   property Timer ssPoll: Timer {
     interval: 2000
     repeat: false
-    onTriggered: ssProbe.running = true
+    onTriggered: { ssProbe.running = true; ssPollDeadline.restart() }
   }
   property Process ssProbe: Process {
     command: ["bash", "-c", "echo none"]
     property string acc: ""
-    stdout: SplitParser { onRead: function (line) { ssProbe.acc += line } }
+    stdout: SplitParser { onRead: function (line) { ssProbe.acc = Caps.appendCapped(ssProbe.acc, line, Caps.MAX_SSPROBE) } }
     onExited: {
+      ssPollDeadline.stop()
       var state = ssProbe.acc.trim()
       ssProbe.acc = ""
       // Startup self-heal result: "stale" = flag with no screensaver → clear.
@@ -60,6 +62,12 @@ Item {
         root.ssPoll.restart()
       }
     }
+  }
+  // Hard deadline: a hung hyprctl probe must not wedge the bar-restore poll.
+  property Timer ssPollDeadline: Timer {
+    interval: 3000
+    repeat: false
+    onTriggered: { if (ssProbe.running) ssProbe.running = false }
   }
   onScreensaverStarted: {
     ssSeen = false

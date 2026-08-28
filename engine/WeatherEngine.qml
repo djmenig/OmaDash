@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../components/caps.js" as Caps
 import "../components/weatherIcons.js" as WeatherIcons
 
 // Shared weather engine: one fetch chain for every bar instance and the
@@ -120,9 +121,10 @@ QtObject {
       + "&timezone=auto&forecast_days=4"
     // NOTE: rebuild the command per fetch — a static command would drop the
     // query (the original "unavailable" bug).
-    meteoProc.command = ["curl", "-sL", "--max-time", "8", "--max-filesize", "1048576", u]
+    meteoProc.command = ["curl", "-sL", "--max-time", "8", "--max-filesize", String(Caps.CURL_FORECAST), u]
     meteoProc.acc = ""
     meteoProc.running = true
+    meteoDeadline.restart()
   }
 
   // IP geolocation fallback (no configured location). Retries both providers
@@ -150,9 +152,10 @@ QtObject {
       ? "https://ipwho.is/"
       : "http://ip-api.com/json/?fields=lat,lon,city"
     engine.geoAttempts++
-    geoProc.command = ["curl", "-sL", "--max-time", "6", url]
+    geoProc.command = ["curl", "-sL", "--max-time", "6", "--max-filesize", String(Caps.CURL_GEOLOCATION), url]
     geoProc.acc = ""
     geoProc.running = true
+    geoDeadline.restart()
     geoRetryTimer.restart()
   }
 
@@ -163,6 +166,8 @@ QtObject {
     printErrors: false
     // NOTE: FileView.text is a METHOD.
     onLoaded: {
+      // Reject nothing-but-bounded data: only parse a small, regular file.
+      if (text().length > Caps.MAX_LOCATION_JSON) { engine.ipFallback(); return }
       try {
         var d = JSON.parse(text())
         var lat = parseFloat(d.latitude !== undefined ? d.latitude : d.lat)
@@ -179,10 +184,11 @@ QtObject {
 
   property Process geoProc: Process {
     id: geoProc
-    command: ["curl", "-sL", "--max-time", "6", "http://ip-api.com/json/?fields=lat,lon,city"]
+    command: ["curl", "-sL", "--max-time", "6", "--max-filesize", String(Caps.CURL_GEOLOCATION), "http://ip-api.com/json/?fields=lat,lon,city"]
     property string acc: ""
-    stdout: SplitParser { onRead: function (line) { geoProc.acc += line } }
+    stdout: SplitParser { onRead: function (line) { geoProc.acc = Caps.appendCapped(geoProc.acc, line, Caps.MAX_GEOLOCATION) } }
     onExited: {
+      geoDeadline.stop()
       try {
         var d = JSON.parse(geoProc.acc)
         if (d.success === false) throw "provider failed"
@@ -203,12 +209,21 @@ QtObject {
     }
   }
 
+  // Hard deadline: if the geo fetch never exits on its own, SIGTERM it so a
+  // hung provider can't leave the retry chain wedged.
+  property Timer geoDeadline: Timer {
+    interval: 7000
+    repeat: false
+    onTriggered: { if (geoProc.running) geoProc.running = false }
+  }
+
   property Process meteoProc: Process {
     id: meteoProc
-    command: ["curl", "-sL", "--max-time", "8", "--max-filesize", "1048576", "https://api.open-meteo.com/v1/forecast"]
+    command: ["curl", "-sL", "--max-time", "8", "--max-filesize", String(Caps.CURL_FORECAST), "https://api.open-meteo.com/v1/forecast"]
     property string acc: ""
-    stdout: SplitParser { onRead: function (line) { meteoProc.acc += line } }
+    stdout: SplitParser { onRead: function (line) { meteoProc.acc = Caps.appendCapped(meteoProc.acc, line, Caps.MAX_RESPONSE) } }
     onExited: {
+      meteoDeadline.stop()
       try {
         var d = JSON.parse(meteoProc.acc)
         var cu = d.current
@@ -280,6 +295,14 @@ QtObject {
       }
       meteoProc.acc = ""
     }
+  }
+
+  // Hard deadline: if the forecast fetch never exits on its own, SIGTERM it so
+  // a hung network can't leave the weather wedged until the next refresh.
+  property Timer meteoDeadline: Timer {
+    interval: 10000
+    repeat: false
+    onTriggered: { if (meteoProc.running) meteoProc.running = false }
   }
 
   property Timer refreshTimer: Timer {
