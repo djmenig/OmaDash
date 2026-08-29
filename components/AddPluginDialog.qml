@@ -171,6 +171,7 @@ Item {
       Text {
         width: parent.width
         text: row.modelData.label
+        textFormat: Text.PlainText
         color: Color.foreground
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.heading
@@ -182,6 +183,7 @@ Item {
         width: parent.width
         visible: row.modelData.description.length > 0
         text: row.modelData.description
+        textFormat: Text.PlainText
         color: Color.foreground
         opacity: 0.52
         font.family: Style.font.menuFamily
