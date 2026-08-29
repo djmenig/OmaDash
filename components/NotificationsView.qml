@@ -28,8 +28,8 @@ Item {
       delegate: Column {
         width: ListView.view.width
         spacing: 2
-        Text { text: model.title; font.pixelSize: 12; font.family: Style.font.family; color: Color.popups.text; font.bold: true }
-        Text { text: model.body; font.pixelSize: 11; font.family: Style.font.family; color: Color.muted }
+        Text { text: model.title; textFormat: Text.PlainText; font.pixelSize: 12; font.family: Style.font.family; color: Color.popups.text; font.bold: true }
+        Text { text: model.body; textFormat: Text.PlainText; font.pixelSize: 11; font.family: Style.font.family; color: Color.muted }
       }
     }
   }

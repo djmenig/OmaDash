@@ -33,6 +33,7 @@ Item {
     Text {
       visible: !WeatherEngine.loaded
       text: WeatherEngine.errorText.length ? WeatherEngine.errorText : "Loading forecast…"
+      textFormat: Text.PlainText
       color: root.fgDim
       font.family: Style.font.menuFamily
       font.pixelSize: Style.font.body
@@ -109,6 +110,7 @@ Item {
 
         Text {
           text: WeatherEngine.placeLabel.toUpperCase()
+          textFormat: Text.PlainText
           color: root.fgDim
           font.family: Style.font.menuFamily
           font.pixelSize: Style.font.body

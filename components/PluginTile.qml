@@ -60,6 +60,7 @@ Item {
       Layout.fillWidth: true
       horizontalAlignment: Text.AlignHCenter
       text: root.name
+      textFormat: Text.PlainText
       color: root.fg
       opacity: root.installed ? 1 : 0.4
       font.family: Style.font.menuFamily
@@ -74,6 +75,7 @@ Item {
       horizontalAlignment: Text.AlignHCenter
       visible: root.description.length > 0
       text: root.description
+      textFormat: Text.PlainText
       color: root.fg
       opacity: 0.52
       font.family: Style.font.menuFamily
